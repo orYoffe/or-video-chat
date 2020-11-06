@@ -1,0 +1,40 @@
+{
+  "rules": {
+    "peers": {
+      ".read": "auth != null",
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "others": {
+          "$uid": {
+            ".read": "auth != null",
+            ".write": "auth != null && auth.uid == $uid",
+            "sdp": {
+              ".validate": "newData.isString()"
+            },
+            "name": {
+              ".validate": "newData.isString()"
+            },
+            "type": {
+              ".validate": "newData.val() == 'offer' || newData.val() == 'answer' || newData.val() == 'error'"
+            },
+            "$other": { ".validate": false }
+          }
+        },
+        "sdp": {
+          ".write": "auth != null && auth.uid == $uid",
+          ".validate": "newData.isString()"
+        },
+        "name": {
+          ".write": "auth != null && auth.uid == $uid",
+          ".validate": "newData.isString()"
+        },
+        "type": {
+          ".write": "auth != null && auth.uid == $uid",
+          ".validate": "newData.val() == 'offer' || newData.val() == 'answer' || newData.val() == 'error'"
+        },
+        "$other": { ".validate": false }
+      }
+    }
+  }
+}

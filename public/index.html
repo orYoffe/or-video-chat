@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Or Video Chat</title>
+
+    <!-- update the version number as needed -->
+    <script defer src="/__/firebase/8.0.0/firebase-app.js"></script>
+    <!-- include only the Firebase features as you need -->
+    <script defer src="/__/firebase/8.0.0/firebase-analytics.js"></script>
+    <script defer src="/__/firebase/8.0.0/firebase-auth.js"></script>
+    <script defer src="/__/firebase/8.0.0/firebase-database.js"></script>
+    <!-- 
+    <script defer src="/__/firebase/8.0.0/firebase-firestore.js"></script>
+    <script defer src="/__/firebase/8.0.0/firebase-functions.js"></script>
+    <script defer src="/__/firebase/8.0.0/firebase-messaging.js"></script>
+    <script defer src="/__/firebase/8.0.0/firebase-storage.js"></script>
+    <script defer src="/__/firebase/8.0.0/firebase-remote-config.js"></script>
+    <script defer src="/__/firebase/8.0.0/firebase-performance.js"></script> -->
+    <!-- 
+      initialize the SDK after all desired features are loaded, set useEmulator to false
+      to avoid connecting the SDK to running emulators.
+    -->
+    <script defer src="/__/firebase/init.js?useEmulator=true"></script>
+
+    <script src="https://unpkg.com/simple-peer@9.8.0/simplepeer.min.js"></script>
+    <style media="screen">
+      body {
+        background: #eceff1;
+        color: rgba(0, 0, 0, 0.87);
+        font-family: Roboto, Helvetica, Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+      }
+      .container {
+        position: relative;
+        width: 100%;
+      }
+      .video-self {
+        width: 130px;
+        position: absolute;
+        right: 0;
+        top: 0;
+        z-index: 999;
+      }
+      .video-call {
+        max-width: 100%;
+        max-height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <label>Chat link:</label>
+    <br />
+    <input id="yourId" onfocus="this.select();" onmouseup="return false;" />
+    <button id="copy-link">Copy link</button>
+    <br />
+    <!-- <label>Other ID:</label><br />
+    <textarea id="otherId"></textarea>
+    <button id="connect">connect</button><br />-->
+    <ul class="users"></ul>
+
+    <!-- <label>Enter Message:</label><br />
+    <textarea id="yourMessage"></textarea>
+    <button id="send">send</button>
+    <pre id="messages"></pre> -->
+    <div class="container">
+      <video class="video-call" autoplay></video>
+      <video class="video-self" autoplay muted></video>
+    </div>
+    <script>
+      function openFullscreen(elem) {
+        if (elem.requestFullscreen) {
+          elem.requestFullscreen();
+        } else if (elem.mozRequestFullScreen) {
+          /* Firefox */
+          elem.mozRequestFullScreen();
+        } else if (elem.webkitRequestFullscreen) {
+          /* Chrome, Safari & Opera */
+          elem.webkitRequestFullscreen();
+        } else if (elem.msRequestFullscreen) {
+          /* IE/Edge */
+          elem.msRequestFullscreen();
+        }
+      }
+      function fallbackCopyTextToClipboard(text) {
+        var textArea = document.createElement("textarea");
+        textArea.value = text;
+
+        // Avoid scrolling to bottom
+        textArea.style.top = "0";
+        textArea.style.left = "0";
+        textArea.style.position = "fixed";
+
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+
+        try {
+          var successful = document.execCommand("copy");
+          var msg = successful ? "successful" : "unsuccessful";
+          console.log("Fallback: Copying text command was " + msg);
+        } catch (err) {
+          console.error("Fallback: Oops, unable to copy", err);
+        }
+
+        document.body.removeChild(textArea);
+      }
+      function copyTextToClipboard(text) {
+        if (!navigator.clipboard) {
+          fallbackCopyTextToClipboard(text);
+          return;
+        }
+        navigator.clipboard.writeText(text).then(
+          function () {
+            // console.log('Async: Copying to clipboard was successful!');
+          },
+          function (err) {
+            console.error("Async: Could not copy text: ", err);
+          }
+        );
+      }
+
+      async function paste(input) {
+        const text = await navigator.clipboard.readText();
+        input.value = text;
+      }
+
+      function play(selector, stream) {
+        var video = document.querySelector(selector);
+        if (typeof video.srcObject == "object") {
+          video.srcObject = stream;
+        } else {
+          video.src = window.URL.createObjectURL(stream);
+        }
+      }
+      document.addEventListener("DOMContentLoaded", async function () {
+        const app = firebase.app();
+        let uidCallback;
+        let uid;
+        let userPeer;
+        let chatLink;
+        let users = document.querySelector(".users");
+        let name = window.localStorage.getItem("name");
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const callID = urlParams.get("id");
+
+        if (!name) {
+          name = prompt("Please enter your name", "John Doe");
+          name = name
+            ? name
+            : "John Doe" + Math.random().toFixed(2) + Date.now();
+          window.localStorage.setItem("name", name);
+        }
+        console.log("------------name------------", name);
+        function writeUser() {
+          // console.log("---writeUser---------uid------------", uid);
+          // console.log("---writeUser---------userPeer------------", userPeer);
+          if (!userPeer || !uid) {
+            return;
+          }
+          firebase
+            .database()
+            .ref("peers/" + uid)
+            .set({
+              sdp: userPeer.sdp,
+              type: userPeer.type,
+              name,
+            });
+
+          console.log("------------callID------------", callID);
+          if (callID) {
+            firebase
+              .database()
+              .ref("peers/" + callID + "/others/" + uid)
+              .set({
+                sdp: userPeer.sdp,
+                type: userPeer.type,
+                name,
+              });
+          } else {
+            uidCallback();
+          }
+        }
+        firebase.auth().onAuthStateChanged(function (user) {
+          if (user) {
+            // User is signed in.
+            var isAnonymous = user.isAnonymous;
+            uid = user.uid;
+            chatLink =
+              window.location.origin + window.location.pathname + "?id=" + uid;
+            document.getElementById("yourId").value = chatLink;
+            writeUser();
+          } else {
+            // User is signed out.
+            // ...
+          }
+          // ...
+        });
+
+        navigator.mediaDevices
+          .getUserMedia({
+            video: true,
+            audio: true,
+          })
+          .then(function (stream) {
+            //   var Peer = require('simple-peer')
+            var peer = new SimplePeer({
+              initiator: true, //location.hash === "#init",
+              trickle: false,
+              stream: stream,
+            });
+
+            play(".video-self", stream);
+            // let yourID = "";
+            peer.on("signal", function (data) {
+              // yourID = JSON.stringify(data);
+
+              userPeer = data;
+              if (uid) {
+                writeUser();
+              } else {
+                firebase.auth().signInAnonymously();
+              }
+            });
+
+            // document
+            //   .getElementById("connect")
+            //   .addEventListener("click", function () {
+            //     var otherId = JSON.parse(
+            //       document.getElementById("otherId").value
+            //     );
+            //     peer.signal(otherId);
+            //   });
+
+            document
+              .getElementById("copy-link")
+              .addEventListener("click", function () {
+                console.log("------------chatLink------------", chatLink);
+                copyTextToClipboard(chatLink);
+              });
+
+            //   document
+            //     .getElementById("send")
+            //     .addEventListener("click", function () {
+            //       var yourMessage = document.getElementById("yourMessage").value;
+            //       peer.send(yourMessage);
+            //     });
+
+            peer.on("data", function (data) {
+              console.log("------------data------------", data);
+              // document.getElementById("messages").textContent += data + "\n";
+            });
+
+            peer.on("stream", function (remoteStream) {
+              var video = document.querySelector(".video-call");
+
+              play(".video-call", remoteStream);
+
+              // openFullscreen(document.querySelector(".container"));
+            });
+
+            if (callID) {
+              firebase
+                .database()
+                .ref("peers/" + callID)
+                .once("value", function (snapshot) {
+                  const user = snapshot.val();
+                  console.log("------------user------------", user);
+                  // var otherId = JSON.parse(
+                  //     document.getElementById("otherId").value
+                  //   );
+                  peer.signal({ sdp: user.sdp, type: user.type });
+                });
+            } else {
+              function listenToUsers() {
+                firebase
+                  .database()
+                  .ref("peers/" + uid + "/others/")
+                  .on("value", function (snapshot) {
+                    const others = snapshot.val();
+                    console.log("------------others------------", others);
+                    // let htm = "";
+                    if (others) {
+                      const user = others[Object.keys(others)[0]];
+                      console.log("------------user------------", user);
+                      if (user.type === "answer") {
+                        peer.signal({ sdp: user.sdp, type: user.type });
+                      }
+                      // Object.keys(others).forEach((key) => {
+                      //   htm += `<li>${usersData[key].name}</li>`;
+                      // });
+                      // users.innerHTML = htm;
+                    }
+                  });
+              }
+
+              uidCallback = listenToUsers;
+            }
+          })
+          .catch(function (err) {
+            console.log("Failed to get local stream", err);
+          });
+      });
+    </script>
+  </body>
+</html>
