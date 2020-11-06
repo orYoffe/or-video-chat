@@ -51,10 +51,13 @@
     </style>
   </head>
   <body>
-    <label>Chat link:</label>
-    <br />
-    <input id="yourId" onfocus="this.select();" onmouseup="return false;" />
-    <button id="copy-link">Copy link</button>
+    <a href="/" class="link-home" style="display: none">Go home</a>
+    <div class="link-container">
+      <label>Chat link:</label>
+      <br />
+      <input id="yourId" onfocus="this.select();" onmouseup="return false;" />
+      <button id="copy-link">Copy link</button>
+    </div>
     <br />
     <!-- <label>Other ID:</label><br />
     <textarea id="otherId"></textarea>
@@ -139,13 +142,18 @@
         const app = firebase.app();
         let uidCallback;
         let uid;
-        let userPeer;
         let chatLink;
         let users = document.querySelector(".users");
         let name = window.localStorage.getItem("name");
 
         const urlParams = new URLSearchParams(window.location.search);
         const callID = urlParams.get("id");
+        if (callID) {
+          let linkContainer = document.querySelector(".link-container");
+          let linkhome = document.querySelector(".link-home");
+          linkContainer.style.display = "none";
+          linkhome.style.display = "block";
+        }
 
         if (!name) {
           name = prompt("Please enter your name", "John Doe");
@@ -155,44 +163,154 @@
           window.localStorage.setItem("name", name);
         }
         console.log("------------name------------", name);
-        function writeUser() {
-          // console.log("---writeUser---------uid------------", uid);
-          // console.log("---writeUser---------userPeer------------", userPeer);
-          if (!userPeer || !uid) {
-            return;
-          }
-          firebase
-            .database()
-            .ref("peers/" + uid)
-            .set({
-              sdp: userPeer.sdp,
-              type: userPeer.type,
-              name,
-            });
-
-          console.log("------------callID------------", callID);
-          if (callID) {
-            firebase
-              .database()
-              .ref("peers/" + callID + "/others/" + uid)
-              .set({
-                sdp: userPeer.sdp,
-                type: userPeer.type,
-                name,
+        function loggedInCallback() {
+          navigator.mediaDevices
+            .getUserMedia({
+              video: true,
+              audio: true,
+            })
+            .then(function (stream) {
+              var peer = new SimplePeer({
+                initiator: !callID,
+                trickle: false,
+                stream: stream,
               });
-          } else {
-            uidCallback();
-          }
+              function assignToCallId(data) {
+                firebase
+                  .database()
+                  .ref("peers/" + callID + "/others/" + uid)
+                  .set({
+                    sdp: data.sdp,
+                    type: data.type,
+                    name,
+                  });
+              }
+
+              play(".video-self", stream);
+              peer.on("signal", function (data) {
+                console.log("------------data.type------------", data.type);
+                if (callID ? data.type !== "answer" : data.type !== "offer") {
+                  return;
+                }
+                if (callID) {
+                  assignToCallId(data);
+                } else {
+                  firebase
+                    .database()
+                    .ref("peers/" + uid)
+                    .once("value", async function (snapshot) {
+                      const user = snapshot.val();
+                      const newData = {
+                        sdp: data.sdp,
+                        type: data.type,
+                        name,
+                      };
+                      // if (user && user.others) {
+                      //   newData.others = user.others;
+                      // }
+                      await firebase
+                        .database()
+                        .ref("peers/" + uid)
+                        [user ? "update" : "set"](newData);
+
+                      firebase
+                        .database()
+                        .ref("peers/" + uid + "/others/")
+                        .on("value", function (snapshot) {
+                          const others = snapshot.val();
+                          console.log("------------others------------", others);
+                          if (others) {
+                            const keys = Object.keys(others);
+                            const user = others[keys[keys.length - 1]];
+                            console.log(
+                              "-------others-----user------------",
+                              user
+                            );
+                            if (user.type === "answer") {
+                              try {
+                                peer.signal({
+                                  sdp: user.sdp,
+                                  type: user.type,
+                                });
+                              } catch (error) {
+                                console.log(
+                                  "------------error------------",
+                                  error
+                                );
+                                loggedInCallback();
+                              }
+                            }
+                          }
+                        });
+                    });
+                }
+              });
+
+              document
+                .getElementById("copy-link")
+                .addEventListener("click", function () {
+                  console.log("------------chatLink------------", chatLink);
+                  copyTextToClipboard(chatLink);
+                });
+
+              peer.on("data", function (data) {
+                console.log("------------data------------", data);
+              });
+
+              peer.on("stream", function (remoteStream) {
+                var video = document.querySelector(".video-call");
+
+                play(".video-call", remoteStream);
+
+                // openFullscreen(document.querySelector(".container"));
+              });
+              peer.on("error", (err) => {
+                console.log("----peer error: ", err);
+                loggedInCallback();
+              });
+              if (callID) {
+                firebase
+                  .database()
+                  .ref("peers/" + callID)
+                  .once("value", function (snapshot) {
+                    const user = snapshot.val();
+                    console.log("------callID------user------------", user);
+                    try {
+                      if (user.type === "offer") {
+                        peer.signal({ sdp: user.sdp, type: user.type });
+                      }
+                    } catch (error) {
+                      console.log("------------error------------", error);
+                      loggedInCallback();
+                    }
+                    // firebase
+                    //   .database()
+                    //   .ref("peers/" + callID + "/others/" + uid)
+                    //   .on("value", function (snapshot) {
+                    //     const myself = snapshot.val();
+                    //     console.log("------------myself------------", myself);
+                    // if (!myself) {
+                    // TODO need to reload
+                    // loggedInCallback();
+                    // }
+                    // });
+                  });
+              }
+            })
+            .catch(function (err) {
+              console.log("Failed to get local stream", err);
+            });
         }
+
         firebase.auth().onAuthStateChanged(function (user) {
           if (user) {
             // User is signed in.
-            var isAnonymous = user.isAnonymous;
+            // var isAnonymous = user.isAnonymous;
             uid = user.uid;
             chatLink =
               window.location.origin + window.location.pathname + "?id=" + uid;
             document.getElementById("yourId").value = chatLink;
-            writeUser();
+            loggedInCallback();
           } else {
             // User is signed out.
             // ...
@@ -200,109 +318,7 @@
           // ...
         });
 
-        navigator.mediaDevices
-          .getUserMedia({
-            video: true,
-            audio: true,
-          })
-          .then(function (stream) {
-            //   var Peer = require('simple-peer')
-            var peer = new SimplePeer({
-              initiator: true, //location.hash === "#init",
-              trickle: false,
-              stream: stream,
-            });
-
-            play(".video-self", stream);
-            // let yourID = "";
-            peer.on("signal", function (data) {
-              // yourID = JSON.stringify(data);
-
-              userPeer = data;
-              if (uid) {
-                writeUser();
-              } else {
-                firebase.auth().signInAnonymously();
-              }
-            });
-
-            // document
-            //   .getElementById("connect")
-            //   .addEventListener("click", function () {
-            //     var otherId = JSON.parse(
-            //       document.getElementById("otherId").value
-            //     );
-            //     peer.signal(otherId);
-            //   });
-
-            document
-              .getElementById("copy-link")
-              .addEventListener("click", function () {
-                console.log("------------chatLink------------", chatLink);
-                copyTextToClipboard(chatLink);
-              });
-
-            //   document
-            //     .getElementById("send")
-            //     .addEventListener("click", function () {
-            //       var yourMessage = document.getElementById("yourMessage").value;
-            //       peer.send(yourMessage);
-            //     });
-
-            peer.on("data", function (data) {
-              console.log("------------data------------", data);
-              // document.getElementById("messages").textContent += data + "\n";
-            });
-
-            peer.on("stream", function (remoteStream) {
-              var video = document.querySelector(".video-call");
-
-              play(".video-call", remoteStream);
-
-              // openFullscreen(document.querySelector(".container"));
-            });
-
-            if (callID) {
-              firebase
-                .database()
-                .ref("peers/" + callID)
-                .once("value", function (snapshot) {
-                  const user = snapshot.val();
-                  console.log("------------user------------", user);
-                  // var otherId = JSON.parse(
-                  //     document.getElementById("otherId").value
-                  //   );
-                  peer.signal({ sdp: user.sdp, type: user.type });
-                });
-            } else {
-              function listenToUsers() {
-                firebase
-                  .database()
-                  .ref("peers/" + uid + "/others/")
-                  .on("value", function (snapshot) {
-                    const others = snapshot.val();
-                    console.log("------------others------------", others);
-                    // let htm = "";
-                    if (others) {
-                      const user = others[Object.keys(others)[0]];
-                      console.log("------------user------------", user);
-                      if (user.type === "answer") {
-                        peer.signal({ sdp: user.sdp, type: user.type });
-                      }
-                      // Object.keys(others).forEach((key) => {
-                      //   htm += `<li>${usersData[key].name}</li>`;
-                      // });
-                      // users.innerHTML = htm;
-                    }
-                  });
-              }
-
-              uidCallback = listenToUsers;
-            }
-          })
-          .catch(function (err) {
-            console.log("Failed to get local stream", err);
-          });
+        firebase.auth().signInAnonymously();
       });
     </script>
   </body>
