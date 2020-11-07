@@ -243,6 +243,8 @@
           window.localStorage.setItem("name", name);
         }
 
+        console.log("------------name------------", name);
+        function loggedInCallback() {
           navigator.mediaDevices
             .getUserMedia({
               video: true,
@@ -251,8 +253,6 @@
             .then(function (stream) {
               
               play(".video-self", stream);
-        console.log("------------name------------", name);
-        function loggedInCallback() {
               var peer = new SimplePeer({
                 initiator: !callID,
                 trickle: false,
@@ -421,13 +421,12 @@
                     // });
                   });
               }
-        }
-        
             })
             .catch(function (err) {
               console.log("Failed to get local stream", err);
               window.location.assign("/");
             });
+        }
 
         firebase.auth().onAuthStateChanged(function (user) {
           if (user) {
