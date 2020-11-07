@@ -34,8 +34,28 @@
         padding: 0;
       }
       .container {
-        position: relative;
+        left: 0;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        position: fixed;
         width: 100%;
+        height: 100%;
+        max-width: 100%;
+        max-height: 100%;
+      }
+      .link-home {
+        background-color: #eceff1;
+        position: fixed;
+        left: 10;
+        top: 10;
+        z-index: 9999;
+      }
+      .fullscreen {
+        position: fixed;
+        left: 50%;
+        top: 10;
+        z-index: 9999;
       }
       .video-self {
         width: 130px;
@@ -45,46 +65,69 @@
         z-index: 999;
       }
       .video-call {
+        position: absolute;
+        right: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
         max-width: 100%;
         max-height: 100%;
+      }
+      .chat-link {
+        margin-right: 20px;
       }
     </style>
   </head>
   <body>
-    <a href="/" class="link-home" style="display: none">Go home</a>
-    <div class="link-container">
-      <label>Chat link:</label>
-      <br />
-      <input id="yourId" onfocus="this.select();" onmouseup="return false;" />
-      <button id="copy-link">Copy link</button>
-    </div>
-    <br />
-    <!-- <label>Other ID:</label><br />
-    <textarea id="otherId"></textarea>
-    <button id="connect">connect</button><br />-->
-    <ul class="users"></ul>
-
     <!-- <label>Enter Message:</label><br />
-    <textarea id="yourMessage"></textarea>
-    <button id="send">send</button>
-    <pre id="messages"></pre> -->
+        <textarea id="yourMessage"></textarea>
+        <button id="send">send</button>
+        <pre id="messages"></pre> -->
     <div class="container">
+      <div class="start-call" style="display: none">
+      <div class="link-container" style="display: none">
+        <label>Chat link:</label>
+        <br />
+        <input id="yourId" onfocus="this.select();" onmouseup="return false;" />
+        <button id="copy-link">Copy link</button>
+      </div>
+      <ul class="channels"></ul>
+      <a href="/" class="link-home" style="display: none">Go home</a>
+      <button class="fullscreen" style="display: none">Fullscreen</button>
       <video class="video-call" autoplay></video>
       <video class="video-self" autoplay muted></video>
     </div>
     <script>
-      function openFullscreen(elem) {
-        if (elem.requestFullscreen) {
-          elem.requestFullscreen();
-        } else if (elem.mozRequestFullScreen) {
-          /* Firefox */
-          elem.mozRequestFullScreen();
-        } else if (elem.webkitRequestFullscreen) {
-          /* Chrome, Safari & Opera */
-          elem.webkitRequestFullscreen();
-        } else if (elem.msRequestFullscreen) {
-          /* IE/Edge */
-          elem.msRequestFullscreen();
+      function togglefullscreen(elem) {
+        var isInFullScreen =
+          (document.fullscreenElement && document.fullscreenElement !== null) ||
+          (document.webkitFullscreenElement &&
+            document.webkitFullscreenElement !== null) ||
+          (document.mozFullScreenElement &&
+            document.mozFullScreenElement !== null) ||
+          (document.msFullscreenElement &&
+            document.msFullscreenElement !== null);
+
+        if (!isInFullScreen) {
+          if (elem.requestFullscreen) {
+            elem.requestFullscreen();
+          } else if (elem.mozRequestFullScreen) {
+            elem.mozRequestFullScreen();
+          } else if (elem.webkitRequestFullScreen) {
+            elem.webkitRequestFullScreen();
+          } else if (elem.msRequestFullscreen) {
+            elem.msRequestFullscreen();
+          }
+        } else {
+          if (document.exitFullscreen) {
+            document.exitFullscreen();
+          } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+          } else if (document.mozCancelFullScreen) {
+            document.mozCancelFullScreen();
+          } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+          }
         }
       }
       function fallbackCopyTextToClipboard(text) {
@@ -130,8 +173,9 @@
         input.value = text;
       }
 
-      function play(selector, stream) {
+      function play(selector, stream, shouldHaveControls) {
         var video = document.querySelector(selector);
+        // video.controls = !!shouldHaveControls;
         if (typeof video.srcObject == "object") {
           video.srcObject = stream;
         } else {
@@ -143,16 +187,51 @@
         let uidCallback;
         let uid;
         let chatLink;
-        let users = document.querySelector(".users");
+        let channelsView = document.querySelector(".channels");
         let name = window.localStorage.getItem("name");
+          let linkContainer = document.querySelector(".link-container");
 
         const urlParams = new URLSearchParams(window.location.search);
         const callID = urlParams.get("id");
-        if (callID) {
-          let linkContainer = document.querySelector(".link-container");
+
+        function setInCallUI() {
           let linkhome = document.querySelector(".link-home");
+          let fullscreen = document.querySelector(".fullscreen");
+
+          channelsView.style.display = "none";
           linkContainer.style.display = "none";
           linkhome.style.display = "block";
+
+          fullscreen.addEventListener("click", function () {
+            togglefullscreen(document.querySelector(".container"));
+          });
+          fullscreen.style.display = "block";
+        }
+        if (callID) {
+          setInCallUI();
+        } else {
+          firebase
+            .database()
+            .ref("offer/")
+            .on("value", function (snapshot) {
+              const channels = snapshot.val();
+              channelsView.innerHTML = "";
+
+              console.log("------------channels------------", channels);
+              if (!channels) {
+                return;
+              }
+              Object.keys(channels).forEach((key) => {
+                if (channels[key].name === name) {
+                  return;
+                }
+                const anchor = document.createElement("a");
+                anchor.href = "/?id=" + key;
+                anchor.className = "chat-link";
+                anchor.textContent = channels[key].name;
+                channelsView.appendChild(anchor);
+              });
+            });
         }
 
         if (!name) {
@@ -160,34 +239,53 @@
           name = name
             ? name
             : "John Doe" + Math.random().toFixed(2) + Date.now();
+
           window.localStorage.setItem("name", name);
         }
-        console.log("------------name------------", name);
-        function loggedInCallback() {
+
           navigator.mediaDevices
             .getUserMedia({
               video: true,
               audio: true,
             })
             .then(function (stream) {
+              
+              play(".video-self", stream);
+        console.log("------------name------------", name);
+        function loggedInCallback() {
               var peer = new SimplePeer({
                 initiator: !callID,
                 trickle: false,
                 stream: stream,
               });
               function assignToCallId(data) {
-                firebase
-                  .database()
-                  .ref("peers/" + callID + "/others/" + uid)
-                  .set({
-                    sdp: data.sdp,
-                    type: data.type,
-                    name,
-                  });
+                const ref = firebase.database().ref("answer/" + callID);
+                ref.set({
+                  sdp: data.sdp,
+                  type: data.type,
+                  name,
+                });
+                ref.onDisconnect().remove(function (err) {
+                  if (err) {
+                    console.error(
+                      "could not establish onDisconnect event",
+                      err
+                    );
+                  }
+                });
+                // window.addEventListener(
+                //   "beforeunload",
+                //   function removeFromRoom() {
+                //     firebase
+                //       .database()
+                //       .ref("answer/" + callID)
+                //       .remove();
+                //   }
+                // );
               }
 
-              play(".video-self", stream);
-              peer.on("signal", function (data) {
+
+              peer.on("signal", async function (data) {
                 console.log("------------data.type------------", data.type);
                 if (callID ? data.type !== "answer" : data.type !== "offer") {
                   return;
@@ -195,53 +293,67 @@
                 if (callID) {
                   assignToCallId(data);
                 } else {
+                  const ref = firebase.database().ref("offer/" + uid);
+                  await ref.set({ type: data.type, sdp: data.sdp, name });
+
+                  ref.onDisconnect().remove(function (err) {
+                    if (err) {
+                      console.error(
+                        "could not establish onDisconnect event",
+                        err
+                      );
+                    }
+                  });
+                  // window.addEventListener(
+                  //   "beforeunload",
+                  //   function removeFromPeer() {
+                  //     firebase
+                  //       .database()
+                  //       .ref("offer/" + uid)
+                  //       .remove();
+                  //   }
+                  // );
+                  await firebase
+                    .database()
+                    .ref("answer/" + uid)
+                    .remove();
                   firebase
                     .database()
-                    .ref("peers/" + uid)
-                    .once("value", async function (snapshot) {
-                      const user = snapshot.val();
-                      const newData = {
-                        sdp: data.sdp,
-                        type: data.type,
-                        name,
-                      };
-                      // if (user && user.others) {
-                      //   newData.others = user.others;
-                      // }
-                      await firebase
-                        .database()
-                        .ref("peers/" + uid)
-                        [user ? "update" : "set"](newData);
-
-                      firebase
-                        .database()
-                        .ref("peers/" + uid + "/others/")
-                        .on("value", function (snapshot) {
-                          const others = snapshot.val();
-                          console.log("------------others------------", others);
-                          if (others) {
-                            const keys = Object.keys(others);
-                            const user = others[keys[keys.length - 1]];
+                    .ref("answer/" + uid)
+                    .on("value", function (snapshot) {
+                      const otherUser = snapshot.val();
+                      console.log(
+                        "------------otherUser------------",
+                        otherUser
+                      );
+                      if (otherUser) {
+                        // const keys = Object.keys(others);
+                        // const user = others[keys[keys.length - 1]];
+                        // console.log(
+                        //   "-------others-----user------------",
+                        //   user
+                        // );
+                        if (otherUser.type === "answer") {
+                          try {
+                            peer.signal({
+                              sdp: otherUser.sdp,
+                              type: otherUser.type,
+                            });
+                          } catch (error) {
                             console.log(
-                              "-------others-----user------------",
-                              user
+                              "------------error.message------------",
+                              error.message
                             );
-                            if (user.type === "answer") {
-                              try {
-                                peer.signal({
-                                  sdp: user.sdp,
-                                  type: user.type,
-                                });
-                              } catch (error) {
-                                console.log(
-                                  "------------error------------",
-                                  error
-                                );
-                                loggedInCallback();
-                              }
+                            if (
+                              "cannot signal after peer is destroyed" ===
+                              error.message
+                            ) {
+                              window.location.reload();
                             }
+                            // loggedInCallback();
                           }
-                        });
+                        }
+                      }
                     });
                 }
               });
@@ -260,32 +372,45 @@
               peer.on("stream", function (remoteStream) {
                 var video = document.querySelector(".video-call");
 
-                play(".video-call", remoteStream);
-
+                play(".video-call", remoteStream, true);
+                setInCallUI();
                 // openFullscreen(document.querySelector(".container"));
               });
               peer.on("error", (err) => {
+                console.log("----peer err.message: ", err.message);
                 console.log("----peer error: ", err);
-                loggedInCallback();
+                if (err.code === "ERR_DATA_CHANNEL") {
+                  play(".video-call", null);
+                } else if (err.message === "Connection failed.") {
+                  window.location.assign("/");
+                }
+                // loggedInCallback();
+                // window.location.reload();
               });
               if (callID) {
                 firebase
                   .database()
-                  .ref("peers/" + callID)
-                  .once("value", function (snapshot) {
+                  .ref("offer/" + callID)
+                  .on("value", function (snapshot) {
                     const user = snapshot.val();
                     console.log("------callID------user------------", user);
+                    if (!user) {
+                      window.location.assign("/");
+                      return;
+                    }
                     try {
                       if (user.type === "offer") {
                         peer.signal({ sdp: user.sdp, type: user.type });
                       }
                     } catch (error) {
                       console.log("------------error------------", error);
-                      loggedInCallback();
+                      // play(".video-call", null);
+                      // loggedInCallback();
+                      window.location.reload();
                     }
                     // firebase
                     //   .database()
-                    //   .ref("peers/" + callID + "/others/" + uid)
+                    //   .ref("offer/" + callID + "/others/" + uid)
                     //   .on("value", function (snapshot) {
                     //     const myself = snapshot.val();
                     //     console.log("------------myself------------", myself);
@@ -296,11 +421,13 @@
                     // });
                   });
               }
+        }
+        
             })
             .catch(function (err) {
               console.log("Failed to get local stream", err);
+              window.location.assign("/");
             });
-        }
 
         firebase.auth().onAuthStateChanged(function (user) {
           if (user) {
@@ -310,7 +437,17 @@
             chatLink =
               window.location.origin + window.location.pathname + "?id=" + uid;
             document.getElementById("yourId").value = chatLink;
+            if (callID) {
             loggedInCallback();
+            } else {
+              
+          let startCall = document.querySelector(".start-call");
+          startCall.addEventListener('click', function () {
+linkContainer.style.display= 'block';
+            loggedInCallback();
+            startCall.parentElement.removeChild(startCall)
+          })
+            }
           } else {
             // User is signed out.
             // ...
