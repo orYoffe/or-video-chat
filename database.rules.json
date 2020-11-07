@@ -1,39 +1,37 @@
 {
   "rules": {
-    "peers": {
+    "rooms": {
       ".read": "auth != null",
-      "$uid": {
-        ".read": "auth != null",
-        ".write": "auth != null",
-        "others": {
-          "$uid": {
-            ".read": "auth != null",
-            ".write": "auth != null && auth.uid == $uid",
-            "sdp": {
-              ".validate": "newData.isString()"
-            },
-            "name": {
-              ".validate": "newData.isString()"
-            },
-            "type": {
-              ".validate": "newData.val() == 'offer' || newData.val() == 'answer' || newData.val() == 'error'"
-            },
-            "$other": { ".validate": false }
-          }
-        },
-        "sdp": {
+      ".write": "auth != null",
+      "$roomId": {
+        "$uid": {
+          ".read": "auth != null",
           ".write": "auth != null && auth.uid == $uid",
-          ".validate": "newData.isString()"
-        },
-        "name": {
-          ".write": "auth != null && auth.uid == $uid",
-          ".validate": "newData.isString()"
-        },
-        "type": {
-          ".write": "auth != null && auth.uid == $uid",
-          ".validate": "newData.val() == 'offer' || newData.val() == 'answer' || newData.val() == 'error'"
-        },
-        "$other": { ".validate": false }
+          "uid": {
+            ".validate": "newData.isString() && newData.val() == $uid"
+          },
+          "$other": { ".validate": false }
+        }
+      }
+    },
+    "users": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$userId": {
+        "$uid": {
+          ".read": "auth != null",
+          ".write": "auth != null && (auth.uid == $uid || auth.uid == $userId)",
+          "sdp": {
+            ".validate": "newData.isString()"
+          },
+          "name": {
+            ".validate": "newData.isString()"
+          },
+          "type": {
+            ".validate": " newData.val() == 'offer' || newData.val() == 'answer' || newData.val() == 'error'"
+          },
+          "$other": { ".validate": false }
+        }
       }
     }
   }

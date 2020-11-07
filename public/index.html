@@ -72,31 +72,27 @@
         height: 100%;
         max-width: 100%;
         max-height: 100%;
+        display: none;
+        flex-wrap: wrap;
+        flex-wrap: wrap;
+        flex-direction: row;
+        align-items: stretch;
+      }
+      .video-call div {
+        min-width: 250px;
+        max-width: 100%;
+        width: 100%;
+        height: auto;
+      }
+      .video-call div video {
+        max-width: 100%;
+        max-height: 100%;
+        width: 100%;
       }
       .chat-link {
         margin-right: 20px;
       }
     </style>
-  </head>
-  <body>
-    <!-- <label>Enter Message:</label><br />
-        <textarea id="yourMessage"></textarea>
-        <button id="send">send</button>
-        <pre id="messages"></pre> -->
-    <div class="container">
-      <div class="start-call" style="display: none">
-      <div class="link-container" style="display: none">
-        <label>Chat link:</label>
-        <br />
-        <input id="yourId" onfocus="this.select();" onmouseup="return false;" />
-        <button id="copy-link">Copy link</button>
-      </div>
-      <ul class="channels"></ul>
-      <a href="/" class="link-home" style="display: none">Go home</a>
-      <button class="fullscreen" style="display: none">Fullscreen</button>
-      <video class="video-call" autoplay></video>
-      <video class="video-self" autoplay muted></video>
-    </div>
     <script>
       function togglefullscreen(elem) {
         var isInFullScreen =
@@ -174,7 +170,10 @@
       }
 
       function play(selector, stream, shouldHaveControls) {
-        var video = document.querySelector(selector);
+        var video =
+          typeof selector === "string"
+            ? document.querySelector(selector)
+            : selector;
         // video.controls = !!shouldHaveControls;
         if (typeof video.srcObject == "object") {
           video.srcObject = stream;
@@ -182,276 +181,302 @@
           video.src = window.URL.createObjectURL(stream);
         }
       }
-      document.addEventListener("DOMContentLoaded", async function () {
-        const app = firebase.app();
-        let uidCallback;
-        let uid;
-        let chatLink;
+
+      function setInCallUI() {
+        let videoWrapper = document.querySelector(".video-call");
+        let linkhome = document.querySelector(".link-home");
+        let fullscreen = document.querySelector(".fullscreen");
         let channelsView = document.querySelector(".channels");
-        let name = window.localStorage.getItem("name");
-          let linkContainer = document.querySelector(".link-container");
+        let linkContainer = document.querySelector(".link-container");
 
-        const urlParams = new URLSearchParams(window.location.search);
-        const callID = urlParams.get("id");
+        channelsView.style.display = "none";
+        linkContainer.style.display = "none";
+        linkhome.style.display = "block";
+        videoWrapper.style.display = "flex";
 
-        function setInCallUI() {
-          let linkhome = document.querySelector(".link-home");
-          let fullscreen = document.querySelector(".fullscreen");
+        fullscreen.addEventListener("click", function () {
+          togglefullscreen(document.querySelector(".container"));
+        });
+        fullscreen.style.display = "block";
+      }
+    </script>
+  </head>
+  <body>
+    <!-- <label>Enter Message:</label><br />
+        <textarea id="yourMessage"></textarea>
+        <button id="send">send</button>
+        <pre id="messages"></pre> -->
+    <div class="container">
+      <button class="start-call" style="display: none">Start a call</button>
+      <div class="link-container" style="display: none">
+        <label>Chat link:</label>
+        <br />
+        <input id="yourId" onfocus="this.select();" onmouseup="return false;" />
+        <button id="copy-link">Copy link</button>
+      </div>
+      <ul class="channels"></ul>
+      <a href="/" class="link-home" style="display: none">Go home</a>
+      <button class="fullscreen" style="display: none">Fullscreen</button>
+      <div class="video-call"></div>
+      <!-- <video class="video-call" autoplay></video> -->
+      <video class="video-self" autoplay muted></video>
+    </div>
+    <script>
+      const roomId = window.location.pathname.slice(1);
+      document.addEventListener("DOMContentLoaded", async function () {
+        const chatLink = window.location.origin + window.location.pathname;
+        document.getElementById("yourId").value = chatLink;
 
-          channelsView.style.display = "none";
-          linkContainer.style.display = "none";
-          linkhome.style.display = "block";
-
-          fullscreen.addEventListener("click", function () {
-            togglefullscreen(document.querySelector(".container"));
+        document
+          .getElementById("copy-link")
+          .addEventListener("click", function () {
+            copyTextToClipboard(chatLink);
           });
-          fullscreen.style.display = "block";
-        }
-        if (callID) {
-          setInCallUI();
-        } else {
-          firebase
-            .database()
-            .ref("offer/")
-            .on("value", function (snapshot) {
-              const channels = snapshot.val();
-              channelsView.innerHTML = "";
 
-              console.log("------------channels------------", channels);
-              if (!channels) {
-                return;
-              }
-              Object.keys(channels).forEach((key) => {
-                if (channels[key].name === name) {
-                  return;
-                }
-                const anchor = document.createElement("a");
-                anchor.href = "/?id=" + key;
-                anchor.className = "chat-link";
-                anchor.textContent = channels[key].name;
-                channelsView.appendChild(anchor);
-              });
-            });
-        }
+        const app = firebase.app();
+        let uid;
+        let name = window.localStorage.getItem("name");
 
         if (!name) {
           name = prompt("Please enter your name", "John Doe");
-          name = name
-            ? name
-            : "John Doe" + Math.random().toFixed(2) + Date.now();
+          name = name ? name : "John " + Math.random().toFixed(2) + Date.now();
 
           window.localStorage.setItem("name", name);
         }
-
         console.log("------------name------------", name);
-        function loggedInCallback() {
-          navigator.mediaDevices
-            .getUserMedia({
+
+        let selfStream;
+        if (roomId) {
+          try {
+            selfStream = await navigator.mediaDevices.getUserMedia({
               video: true,
               audio: true,
-            })
-            .then(function (stream) {
-              
-              play(".video-self", stream);
-              var peer = new SimplePeer({
-                initiator: !callID,
-                trickle: false,
-                stream: stream,
-              });
-              function assignToCallId(data) {
-                const ref = firebase.database().ref("answer/" + callID);
-                ref.set({
-                  sdp: data.sdp,
-                  type: data.type,
-                  name,
-                });
-                ref.onDisconnect().remove(function (err) {
-                  if (err) {
-                    console.error(
-                      "could not establish onDisconnect event",
-                      err
-                    );
-                  }
-                });
-                // window.addEventListener(
-                //   "beforeunload",
-                //   function removeFromRoom() {
-                //     firebase
-                //       .database()
-                //       .ref("answer/" + callID)
-                //       .remove();
-                //   }
-                // );
-              }
-
-
-              peer.on("signal", async function (data) {
-                console.log("------------data.type------------", data.type);
-                if (callID ? data.type !== "answer" : data.type !== "offer") {
-                  return;
-                }
-                if (callID) {
-                  assignToCallId(data);
-                } else {
-                  const ref = firebase.database().ref("offer/" + uid);
-                  await ref.set({ type: data.type, sdp: data.sdp, name });
-
-                  ref.onDisconnect().remove(function (err) {
-                    if (err) {
-                      console.error(
-                        "could not establish onDisconnect event",
-                        err
-                      );
-                    }
-                  });
-                  // window.addEventListener(
-                  //   "beforeunload",
-                  //   function removeFromPeer() {
-                  //     firebase
-                  //       .database()
-                  //       .ref("offer/" + uid)
-                  //       .remove();
-                  //   }
-                  // );
-                  await firebase
-                    .database()
-                    .ref("answer/" + uid)
-                    .remove();
-                  firebase
-                    .database()
-                    .ref("answer/" + uid)
-                    .on("value", function (snapshot) {
-                      const otherUser = snapshot.val();
-                      console.log(
-                        "------------otherUser------------",
-                        otherUser
-                      );
-                      if (otherUser) {
-                        // const keys = Object.keys(others);
-                        // const user = others[keys[keys.length - 1]];
-                        // console.log(
-                        //   "-------others-----user------------",
-                        //   user
-                        // );
-                        if (otherUser.type === "answer") {
-                          try {
-                            peer.signal({
-                              sdp: otherUser.sdp,
-                              type: otherUser.type,
-                            });
-                          } catch (error) {
-                            console.log(
-                              "------------error.message------------",
-                              error.message
-                            );
-                            if (
-                              "cannot signal after peer is destroyed" ===
-                              error.message
-                            ) {
-                              window.location.reload();
-                            }
-                            // loggedInCallback();
-                          }
-                        }
-                      }
-                    });
-                }
-              });
-
-              document
-                .getElementById("copy-link")
-                .addEventListener("click", function () {
-                  console.log("------------chatLink------------", chatLink);
-                  copyTextToClipboard(chatLink);
-                });
-
-              peer.on("data", function (data) {
-                console.log("------------data------------", data);
-              });
-
-              peer.on("stream", function (remoteStream) {
-                var video = document.querySelector(".video-call");
-
-                play(".video-call", remoteStream, true);
-                setInCallUI();
-                // openFullscreen(document.querySelector(".container"));
-              });
-              peer.on("error", (err) => {
-                console.log("----peer err.message: ", err.message);
-                console.log("----peer error: ", err);
-                if (err.code === "ERR_DATA_CHANNEL") {
-                  play(".video-call", null);
-                } else if (err.message === "Connection failed.") {
-                  window.location.assign("/");
-                }
-                // loggedInCallback();
-                // window.location.reload();
-              });
-              if (callID) {
-                firebase
-                  .database()
-                  .ref("offer/" + callID)
-                  .on("value", function (snapshot) {
-                    const user = snapshot.val();
-                    console.log("------callID------user------------", user);
-                    if (!user) {
-                      window.location.assign("/");
-                      return;
-                    }
-                    try {
-                      if (user.type === "offer") {
-                        peer.signal({ sdp: user.sdp, type: user.type });
-                      }
-                    } catch (error) {
-                      console.log("------------error------------", error);
-                      // play(".video-call", null);
-                      // loggedInCallback();
-                      window.location.reload();
-                    }
-                    // firebase
-                    //   .database()
-                    //   .ref("offer/" + callID + "/others/" + uid)
-                    //   .on("value", function (snapshot) {
-                    //     const myself = snapshot.val();
-                    //     console.log("------------myself------------", myself);
-                    // if (!myself) {
-                    // TODO need to reload
-                    // loggedInCallback();
-                    // }
-                    // });
-                  });
-              }
-            })
-            .catch(function (err) {
-              console.log("Failed to get local stream", err);
-              window.location.assign("/");
             });
+            play(".video-self", selfStream);
+          } catch (error) {
+            console.log(" ****** Failed to get local stream: ", error);
+            window.location.assign("/");
+          }
+        }
+        function createPeer(isAnswer) {
+          const peer = new SimplePeer({
+            initiator: !isAnswer,
+            trickle: false,
+            stream: selfStream,
+          });
+
+          let peerVideoTag;
+          const videoWrapper = document.querySelector(".video-call");
+
+          peer.on("stream", function (remoteStream) {
+            peerVideoTag = document.createElement("div");
+            const video = document.createElement("video");
+            video.autoplay = true;
+            play(video, remoteStream);
+            peerVideoTag.appendChild(video);
+            videoWrapper.appendChild(peerVideoTag);
+            setInCallUI();
+          });
+
+          peer.on("error", (err) => {
+            console.log("----peer err.message: ", err.message);
+            console.log("----peer error: ", err);
+            if (err.code === "ERR_DATA_CHANNEL") {
+              videoWrapper.removeChild(peerVideoTag);
+            } else if (err.message === "Connection failed.") {
+              videoWrapper.removeChild(peerVideoTag);
+            }
+          });
+          peer.on("data", function (data) {
+            console.log("------------data------------", data);
+          });
+
+          return peer;
         }
 
-        firebase.auth().onAuthStateChanged(function (user) {
-          if (user) {
-            // User is signed in.
-            // var isAnonymous = user.isAnonymous;
-            uid = user.uid;
-            chatLink =
-              window.location.origin + window.location.pathname + "?id=" + uid;
-            document.getElementById("yourId").value = chatLink;
-            if (callID) {
-            loggedInCallback();
-            } else {
-              
-          let startCall = document.querySelector(".start-call");
-          startCall.addEventListener('click', function () {
-linkContainer.style.display= 'block';
-            loggedInCallback();
-            startCall.parentElement.removeChild(startCall)
-          })
-            }
+        function makePeer(userData, otherUserId) {
+          const isAnswer = !!userData;
+          const peer = createPeer(isAnswer);
+
+          if (isAnswer) {
+            peer.on("signal", async function (data) {
+              console.log("----------ANSWER------------");
+              console.log(
+                "--ANSWER----signal------isAnswer------------",
+                isAnswer
+              );
+              console.log(
+                "--ANSWER----signal------userData------------",
+                userData
+              );
+              console.log("--ANSWER-----signal-----data------------", data);
+              console.log("----------ANSWER------------");
+              if (data.type !== "answer") {
+                return;
+              }
+              const ref = firebase
+                .database()
+                .ref("users/" + otherUserId + "/" + uid);
+              await ref.set({ type: data.type, sdp: data.sdp, name });
+
+              ref.onDisconnect().remove(function (err) {
+                if (err) {
+                  console.error("could not establish onDisconnect event", err);
+                }
+              });
+            });
+
+            peer.signal({
+              sdp: userData.sdp,
+              type: userData.type,
+            });
           } else {
-            // User is signed out.
-            // ...
+            peer.on("signal", async function (data) {
+              console.log("----------OFFER------------");
+              console.log(
+                "--OFFER---signal-------isAnswer------------",
+                isAnswer
+              );
+              console.log(
+                "--OFFER---signal-------userData------------",
+                userData
+              );
+              console.log("--OFFER---signal-------data------------", data);
+              console.log("----------OFFER------------");
+              if (data.type !== "offer") {
+                return;
+              }
+              const ref = firebase
+                .database()
+                .ref("users/" + otherUserId + "/" + uid);
+              await ref.set({ type: data.type, sdp: data.sdp, name });
+
+              ref.onDisconnect().remove(function (err) {
+                if (err) {
+                  console.error("could not establish onDisconnect event", err);
+                }
+              });
+            });
           }
-          // ...
+          return peer;
+        }
+        firebase.auth().onAuthStateChanged(async function (user) {
+          if (!user) {
+            console.log(
+              "----user  not connected--------user------------",
+              user
+            );
+            return;
+          }
+
+          uid = user.uid;
+
+          if (roomId) {
+            setInCallUI();
+
+            // User domain
+            const userDomain = firebase.database().ref("users/" + uid);
+            userDomain.remove(function (err) {
+              if (err) {
+                console.error("could not establish onDisconnect event", err);
+              }
+            });
+            userDomain.onDisconnect().remove(function (err) {
+              if (err) {
+                console.error("could not establish onDisconnect event", err);
+              }
+            });
+            const peers = {};
+
+            userDomain.on("child_added", function (snapshot) {
+              let offer = snapshot.val();
+              const dataRef = snapshot.ref;
+              const userId = snapshot.key.slice(0);
+              // console.log("------------dataRef------------", dataRef);
+              console.log("------child_added------userId------------", userId);
+              console.log("-----child_added-------offer------------", offer);
+
+              if (!offer) {
+                return;
+              }
+              offer = { ...offer };
+              if (offer.type === "offer") {
+                const peer = makePeer(offer, userId);
+                peers[userId] = peer;
+              } else if (peers[userId]) {
+                peers[userId].signal({
+                  sdp: offer.sdp,
+                  type: offer.type,
+                });
+              }
+              // TODO remove child after taking action
+              dataRef.remove(function (err) {
+                if (err) {
+                  console.error("could not establish onDisconnect event", err);
+                }
+              });
+            });
+
+            // Room domain
+            const roomRef = firebase.database().ref("rooms/" + roomId);
+            await roomRef.once("value", function (snapshot) {
+              const room = snapshot.val();
+              console.log("------------room------------", room);
+              if (room) {
+                Object.keys(room).forEach((userId) => {
+                  if (userId !== uid) {
+                    const peer = makePeer(null, userId);
+                    peers[userId] = peer;
+                  }
+                });
+              }
+              const userRoom = firebase
+                .database()
+                .ref("rooms/" + roomId + "/" + uid);
+
+              userRoom.set({ uid });
+
+              userRoom.onDisconnect().remove(function (err) {
+                if (err) {
+                  console.error("could not establish onDisconnect event", err);
+                }
+              });
+            });
+          } else {
+            let startCall = document.querySelector(".start-call");
+            startCall.style.display = "block";
+            startCall.addEventListener("click", function () {
+              let linkContainer = document.querySelector(".link-container");
+              linkContainer.style.display = "block";
+              startCall.parentElement.removeChild(startCall);
+              window.location.assign("/room-" + name);
+            });
+
+            firebase
+              .database()
+              .ref("rooms/")
+              .on("value", function (snapshot) {
+                const rooms = snapshot.val();
+                let channelsView = document.querySelector(".channels");
+                channelsView.innerHTML = "";
+
+                console.log("------------rooms------------", rooms);
+                if (!rooms) {
+                  return;
+                }
+                channelsView.innerHTML = "Rooms: <br/>";
+                Object.keys(rooms).forEach((key) => {
+                  if (rooms[key].name === name) {
+                    return;
+                  }
+                  const anchor = document.createElement("a");
+                  anchor.href = "/" + key;
+                  anchor.className = "chat-link";
+                  anchor.textContent = decodeURI(key);
+                  channelsView.appendChild(anchor);
+                });
+              });
+          }
         });
 
         firebase.auth().signInAnonymously();

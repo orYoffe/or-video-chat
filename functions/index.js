@@ -19,10 +19,10 @@ admin.initializeApp();
 // const app1 = express();
 
 // const peerServer = PeerServer({ port, path: "/", proxied: true });
-exports.create = functions.https.onRequest((request, response) => {
-  functions.logger.info("Hello logs!", { structuredData: true });
-  response.send("Hello from Firebase!");
-});
+// exports.create = functions.https.onRequest((request, response) => {
+//   functions.logger.info("Hello logs!", { structuredData: true });
+//   response.send("Hello from Firebase!");
+// });
 
 // const api = functions.https.onRequest(app1);
 
