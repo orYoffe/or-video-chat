@@ -27,8 +27,8 @@
     <script src="https://unpkg.com/simple-peer@9.8.0/simplepeer.min.js"></script>
     <style media="screen">
       body {
-        background: #eceff1;
-        color: rgba(0, 0, 0, 0.87);
+        background: #111;
+        color: #eceff1;
         font-family: Roboto, Helvetica, Arial, sans-serif;
         margin: 0;
         padding: 0;
@@ -74,17 +74,38 @@
         max-height: 100%;
         display: none;
         flex-wrap: wrap;
-        flex-wrap: wrap;
         flex-direction: row;
         align-items: stretch;
       }
-      .video-call div {
+      .video-call .video-wrapper {
         min-width: 250px;
         max-width: 100%;
         width: 100%;
         height: auto;
       }
-      .video-call div video {
+      .video-call .mute-overlay {
+        position: absolute;
+        display: flex;
+        right: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+      }
+      .mute-overlay button {
+        display: none;
+      }
+      .mute-overlay:hover button {
+        display: block;
+      }
+      @media only screen and (max-width: 800px) {
+        .mute-overlay button {
+          display: block;
+        }
+      }
+      .video-call .video-wrapper video {
         max-width: 100%;
         max-height: 100%;
         width: 100%;
@@ -215,11 +236,16 @@
         <button id="copy-link">Copy link</button>
       </div>
       <ul class="channels"></ul>
-      <a href="/" class="link-home" style="display: none">Go home</a>
+      <a href="/" class="link-home" style="display: none">Leave call</a>
       <button class="fullscreen" style="display: none">Fullscreen</button>
       <div class="video-call"></div>
       <!-- <video class="video-call" autoplay></video> -->
-      <video class="video-self" autoplay muted></video>
+      <video
+        class="video-self"
+        autoplay="autoplay"
+        muted="muted"
+        playsinline="playsinline"
+      ></video>
     </div>
     <script>
       const roomId = window.location.pathname.slice(1);
@@ -270,10 +296,40 @@
 
           peer.on("stream", function (remoteStream) {
             peerVideoTag = document.createElement("div");
+            const muteOverlay = document.createElement("div");
+            const muteBtn = document.createElement("button");
             const video = document.createElement("video");
-            video.autoplay = true;
+
+            video.autoplay = "autoplay";
+            video.muted = "muted";
+            video.playsinline = "playsinline";
+            video.setAttribute("autoplay", "autoplay");
+            video.setAttribute("playsinline", "playsinline");
+            video.setAttribute("muted", "muted");
+
+            peerVideoTag.className = "video-wrapper";
+            muteOverlay.className = "mute-overlay";
+            muteBtn.textContent = "Unmute";
+            muteBtn.style.zIndex = "3";
+            muteBtn.style.position = "relative";
+            muteBtn.addEventListener("click", function () {
+              console.log("------------video.muted------------", video.muted);
+              if (video.muted) {
+                video.muted = false;
+                muteBtn.textContent = "Mute";
+                video.removeAttribute("muted");
+                muteBtn.removeAttribute("style");
+              } else {
+                video.muted = true;
+                muteBtn.textContent = "Unmute";
+                muteBtn.style.display = "block";
+                video.setAttribute("muted", "muted");
+              }
+            });
             play(video, remoteStream);
             peerVideoTag.appendChild(video);
+            muteOverlay.appendChild(muteBtn);
+            peerVideoTag.appendChild(muteOverlay);
             videoWrapper.appendChild(peerVideoTag);
             setInCallUI();
           });
