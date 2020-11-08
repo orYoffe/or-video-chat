@@ -33,6 +33,19 @@
         margin: 0;
         padding: 0;
       }
+      button,
+      a {
+        text-decoration: none;
+        min-height: 30px;
+        background: #3344dd;
+        color: #ddd;
+        box-shadow: 0px -1px 3px 0px #ccc;
+        border: 1px solid black;
+        text-align: center;
+        line-height: 30px;
+        font-size: 18px;
+        padding: 6px 8px;
+      }
       .container {
         left: 0;
         right: 0;
@@ -45,16 +58,16 @@
         max-height: 100%;
       }
       .link-home {
-        background-color: #eceff1;
         position: fixed;
-        left: 10;
-        top: 10;
+        left: 10px;
+        top: 10px;
         z-index: 9999;
       }
       .fullscreen {
         position: fixed;
         left: 50%;
-        top: 10;
+        transform: translateX(-50%);
+        top: 10px;
         z-index: 9999;
       }
       .video-self {
@@ -62,7 +75,7 @@
         position: absolute;
         right: 0;
         top: 0;
-        z-index: 999;
+        z-index: 30;
       }
       .video-call {
         position: absolute;
@@ -73,45 +86,62 @@
         max-width: 100%;
         max-height: 100%;
         display: none;
-        flex-wrap: wrap;
-        flex-direction: row;
-        align-items: stretch;
       }
       .video-call .video-wrapper {
+        position: relative;
         min-width: 250px;
         max-width: 100%;
-        width: 100%;
-        height: auto;
+        width: 100vw;
+        text-align: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
       .video-call .mute-overlay {
         position: absolute;
-        display: flex;
         right: 0;
         top: 0;
         width: 100%;
         height: 100%;
-        flex-wrap: wrap;
-        align-items: center;
+        display: flex;
+        align-items: flex-end;
         justify-content: center;
       }
       .mute-overlay button {
-        display: none;
+        transition: 0.3s opacity;
+        margin-bottom: 20px;
+        opacity: 0;
       }
       .mute-overlay:hover button {
-        display: block;
-      }
-      @media only screen and (max-width: 800px) {
-        .mute-overlay button {
-          display: block;
-        }
+        opacity: 1;
       }
       .video-call .video-wrapper video {
-        max-width: 100%;
         max-height: 100%;
-        width: 100%;
+        height: 100vh;
       }
       .chat-link {
         margin-right: 20px;
+      }
+
+      @media only screen and (max-width: 800px) {
+        .mute-overlay button {
+          opacity: 1;
+        }
+        .video-call .video-wrapper:not(:first-child) {
+          position: absolute;
+          right: 5px;
+          bottom: 5px;
+          height: 250px;
+          width: auto;
+          z-index: 40;
+        }
+        .video-wrapper:first-child .mute-overlay {
+          align-items: center;
+          justify-content: flex-start;
+        }
+        .video-wrapper:first-child .mute-overlay button {
+          margin-left: 20px;
+        }
       }
     </style>
     <script>
@@ -250,6 +280,12 @@
     <script>
       const roomId = window.location.pathname.slice(1);
       document.addEventListener("DOMContentLoaded", async function () {
+        let mql = window.matchMedia("(max-width: 800px)");
+        let isMobile = mql.matches;
+        window.addEventListener("resize", function () {
+          mql = window.matchMedia("(max-width: 800px)");
+          isMobile = mql.matches;
+        });
         const chatLink = window.location.origin + window.location.pathname;
         document.getElementById("yourId").value = chatLink;
 
@@ -312,8 +348,17 @@
             muteBtn.textContent = "Unmute";
             muteBtn.style.zIndex = "3";
             muteBtn.style.position = "relative";
+            muteOverlay.addEventListener("click", function () {
+              const isFirst = videoWrapper.children[0] === this.parentElement;
+              if (isMobile && !isFirst) {
+                videoWrapper.removeChild(this.parentElement);
+                videoWrapper.insertBefore(
+                  this.parentElement,
+                  videoWrapper.children[0]
+                );
+              }
+            });
             muteBtn.addEventListener("click", function () {
-              console.log("------------video.muted------------", video.muted);
               if (video.muted) {
                 video.muted = false;
                 muteBtn.textContent = "Mute";
