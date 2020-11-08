@@ -279,7 +279,7 @@
         <input id="yourId" onfocus="this.select();" onmouseup="return false;" />
         <button id="copy-link">Copy link</button>
       </div>
-      <ul class="channels"></ul>
+      <div class="channels"></div>
       <a href="/" class="link-home" style="display: none">Leave call</a>
       <button class="fullscreen" style="display: none">Fullscreen</button>
       <div class="video-call"></div>
@@ -589,7 +589,8 @@
               .on("value", function (snapshot) {
                 const rooms = snapshot.val();
                 let channelsView = document.querySelector(".channels");
-                channelsView.innerHTML = "";
+                channelsView.innerHTML =
+                  'There are currently no rooms active. Start your own chat room by clicking "Start a new room" button.';
 
                 console.log("------------rooms------------", rooms);
                 if (!rooms) {
