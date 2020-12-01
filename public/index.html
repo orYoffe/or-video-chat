@@ -134,6 +134,20 @@
       .chat-link {
         margin-right: 20px;
       }
+      video {
+        transform: rotateY(180deg);
+      }
+
+      video.video-self {
+        transform: rotateY(0deg);
+
+        -moz-transform: scaleX(-1);
+        -o-transform: scaleX(-1);
+        -webkit-transform: scaleX(-1);
+        transform: scaleX(-1);
+        filter: FlipH;
+        -ms-filter: "FlipH";
+      }
 
       @media only screen and (max-width: 800px) {
         .mute-overlay button {
