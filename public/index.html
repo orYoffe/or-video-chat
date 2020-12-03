@@ -347,6 +347,11 @@
             ? name
             : "" + parseInt(Math.random() * 100, 10) + Date.now();
 
+          /*
+            "rooms/room-room-0.741607032609327". Paths must be non-empty strings and can't contain ".", "#", "$", "[", or "]"
+            */
+          name = name.replace(/\.|\$|\[|\]|\#/gi, "_");
+
           window.localStorage.setItem("name", name);
         }
         console.log("------------name------------", name);
