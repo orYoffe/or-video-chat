@@ -339,7 +339,7 @@
 
         const app = firebase.app();
         let uid;
-        let name = window.localStorage.getItem("name");
+        let name = window.localStorage.getItem("room");
 
         if (!name) {
           // name = prompt("Please enter your name", "John Doe");
@@ -352,7 +352,7 @@
             */
           name = name.replace(/\.|\$|\[|\]|\#/gi, "_");
 
-          window.localStorage.setItem("name", name);
+          window.localStorage.setItem("room", name);
         }
         console.log("------------name------------", name);
 
