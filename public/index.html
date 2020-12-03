@@ -343,7 +343,9 @@
 
         if (!name) {
           // name = prompt("Please enter your name", "John Doe");
-          name = name ? name : "room-" + Math.random().toFixed(2) + Date.now();
+          name = name
+            ? name
+            : "" + parseInt(Math.random() * 100, 10) + Date.now();
 
           window.localStorage.setItem("name", name);
         }
