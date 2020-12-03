@@ -342,8 +342,8 @@
         let name = window.localStorage.getItem("name");
 
         if (!name) {
-          name = prompt("Please enter your name", "John Doe");
-          name = name ? name : "John " + Math.random().toFixed(2) + Date.now();
+          // name = prompt("Please enter your name", "John Doe");
+          name = name ? name : "room-" + Math.random().toFixed(2) + Date.now();
 
           window.localStorage.setItem("name", name);
         }
