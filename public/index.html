@@ -267,11 +267,11 @@
         const channelsView = document.querySelector(".channels");
         const linkContainer = document.querySelector(".link-container");
 
-        channelsView && channelsView.style.display = "none";
-        linkContainer && linkContainer.style.display = "none";
-        linkhome && linkhome.style.display = "block";
-        unmuteAllBtn && unmuteAllBtn.style.display = "block";
-        videoWrapper && videoWrapper.style.display = "flex";
+        if (channelsView) channelsView.style.display = "none";
+        if (linkContainer) linkContainer.style.display = "none";
+        if (linkhome) linkhome.style.display = "block";
+        if (unmuteAllBtn) unmuteAllBtn.style.display = "block";
+        if (videoWrapper) videoWrapper.style.display = "flex";
 
         fullscreen.addEventListener("click", function () {
           togglefullscreen(document.querySelector(".container"));
