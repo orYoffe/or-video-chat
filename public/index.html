@@ -406,7 +406,15 @@
             // muteSelf.style.display = "block";
           } catch (error) {
             console.log(" ****** Failed to get local stream: ", error);
-            window.location.assign("/");
+            if (error.message.indexOf("Could not start video source") !== -1) {
+              alert(
+                "Could not get your video. Please check if you already have another tab open with this website "
+              );
+              console.log("------------selfStream------------", selfStream);
+            } else {
+              alert("Sorry we got an error :/ ");
+              window.location.assign("/");
+            }
           }
         }
         function createPeer(isAnswer) {
