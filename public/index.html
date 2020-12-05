@@ -46,6 +46,11 @@
         font-size: 18px;
         padding: 6px 8px;
       }
+      .start-call,
+      .channels {
+        z-index: 200;
+        position: relative;
+      }
       .container {
         left: 0;
         right: 0;
@@ -69,6 +74,12 @@
         height: 100%;
         z-index: 101;
       }
+      /* .buttons {
+        position: fixed;
+        width: 100%;
+        height: 50px;
+        z-index: 100;
+      } */
       .link-home {
         position: fixed;
         left: 10px;
@@ -80,6 +91,13 @@
         left: 50%;
         transform: translateX(-50%);
         top: 10px;
+        z-index: 100;
+      }
+      .mute-self {
+        position: fixed;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: 10px;
         z-index: 100;
       }
       .video-self {
@@ -96,13 +114,18 @@
         width: 100%;
         height: 100%;
         max-width: 100%;
-        max-height: 100%;
+        max-height: 80%;
+        margin-top: 120px;
         display: none;
+        /* padding-top: 120px; */
       }
       .video-call .video-wrapper {
+        /* flex: 1;
+        margin: 0 1%; */
         position: relative;
-        min-width: 250px;
+        /* min-width: 250px; */
         max-width: 100%;
+        max-height: 100%;
         width: 100vw;
         text-align: center;
         display: flex;
@@ -129,18 +152,13 @@
       }
       .video-call .video-wrapper video {
         max-height: 100%;
-        height: 100vh;
+        max-width: 100%;
+        /* height: 100vh; */
       }
       .chat-link {
         margin-right: 20px;
       }
       video {
-        transform: rotateY(180deg);
-      }
-
-      video.video-self {
-        transform: rotateY(0deg);
-
         -moz-transform: scaleX(-1);
         -o-transform: scaleX(-1);
         -webkit-transform: scaleX(-1);
@@ -153,7 +171,7 @@
         .mute-overlay button {
           opacity: 1;
         }
-        .video-call .video-wrapper:not(:first-child) {
+        /* .video-call .video-wrapper:not(:first-child) {
           position: absolute;
           right: 5px;
           bottom: 5px;
@@ -167,7 +185,11 @@
         }
         .video-wrapper:first-child .mute-overlay button {
           margin-left: 20px;
-        }
+        } */
+        /* .buttons {
+          opacity: 0;
+          transition: opacity 0.2s;
+        } */
       }
     </style>
     <script>
@@ -265,10 +287,10 @@
         const linkhome = document.querySelector(".link-home");
         const fullscreen = document.querySelector(".fullscreen");
         const channelsView = document.querySelector(".channels");
-        const linkContainer = document.querySelector(".link-container");
+        // const linkContainer = document.querySelector(".link-container");
 
         if (channelsView) channelsView.style.display = "none";
-        if (linkContainer) linkContainer.style.display = "none";
+        // if (linkContainer) linkContainer.style.display = "none";
         if (linkhome) linkhome.style.display = "block";
         if (unmuteAllBtn) unmuteAllBtn.style.display = "block";
         if (videoWrapper) videoWrapper.style.display = "flex";
@@ -287,21 +309,25 @@
         <pre id="messages"></pre> -->
     <div class="container">
       <button class="start-call" style="display: none">Start a new room</button>
-      <div class="link-container" style="display: none">
+      <!-- <div class="link-container" style="display: none">
         <label>Chat link:</label>
         <br />
         <input id="yourId" onfocus="this.select();" onmouseup="return false;" />
         <button id="copy-link">Copy link</button>
-      </div>
+      </div> -->
       <div class="channels"></div>
+      <!-- <div class="buttons"> -->
       <a href="/" class="link-home" style="display: none">Leave call</a>
       <button class="fullscreen" style="display: none">Fullscreen</button>
-      <div class="video-call"></div>
+      <button class="mute-self" style="display: none">Mute yourself</button>
+      <!-- </div> -->
+      <div class="video-call" style="opacity: 0"></div>
       <video
         class="video-self"
         autoplay="autoplay"
         muted="muted"
         playsinline="playsinline"
+        style="width: 100%"
       ></video>
       <button class="unmute-all" style="display: none">
         Click to join the call
@@ -316,13 +342,30 @@
           mql = window.matchMedia("(max-width: 800px)");
           isMobile = mql.matches;
         });
-        const chatLink = window.location.origin + window.location.pathname;
-        document.getElementById("yourId").value = chatLink;
+        if (isMobile) {
+          // const buttons = document.querySelector(".buttons");
+          // buttons.style.opacity = 1;
+          // buttons.addEventListener("click", function () {
+          //   buttons.style.opacity = 1;
+          //   setTimeout(() => {
+          //     buttons.style.opacity = 0;
+          //   }, 1500);
+          // });
+        }
+        // const chatLink = window.location.origin + window.location.pathname;
+        // document.getElementById("yourId").value = chatLink;
 
         const videoWrapper = document.querySelector(".video-call");
         const unmuteAllBtn = document.querySelector(".unmute-all");
+        let hasUnmutedAll = false;
         unmuteAllBtn.addEventListener("click", function () {
-          Array.from(videoWrapper.children).forEach((elm) => {
+          const videos = Array.from(videoWrapper.children);
+          if (videos.length) {
+            document.querySelector(".video-self").removeAttribute("style");
+          }
+          const width = (100 / videos.length).toFixed(2) + "vw";
+          videos.forEach((elm) => {
+            elm.style.width = width;
             elm.children[0].muted = false;
             elm.children[0].volume = 1;
             elm.children[1].children[0].textContent = "Mute";
@@ -330,31 +373,18 @@
             elm.children[0].removeAttribute("muted");
           });
           document.querySelector(".container").removeChild(unmuteAllBtn);
+          videoWrapper.style.opacity = 1;
+          hasUnmutedAll = true;
         });
-        document
-          .getElementById("copy-link")
-          .addEventListener("click", function () {
-            copyTextToClipboard(chatLink);
-          });
+        // document
+        //   .getElementById("copy-link")
+        //   .addEventListener("click", function () {
+        //     copyTextToClipboard(chatLink);
+        //   });
 
         const app = firebase.app();
         let uid;
-        let name = window.localStorage.getItem("room");
-
-        if (!name) {
-          // name = prompt("Please enter your name", "John Doe");
-          name = name
-            ? name
-            : "" + parseInt(Math.random() * 100, 10) + Date.now();
-
-          /*
-            "rooms/room-room-0.741607032609327". Paths must be non-empty strings and can't contain ".", "#", "$", "[", or "]"
-            */
-          name = name.replace(/\.|\$|\[|\]|\#/gi, "_");
-
-          window.localStorage.setItem("room", name);
-        }
-        console.log("------------name------------", name);
+        const name = "" + parseInt(Math.random() * 100, 10) + Date.now();
 
         let selfStream;
         if (roomId) {
@@ -364,6 +394,16 @@
               audio: true,
             });
             play(".video-self", selfStream);
+            // let isMuted = false;
+            // const muteSelf = document.querySelector(".mute-self");
+            // muteSelf.addEventListener("click", function () {
+            //   isMuted = !isMuted;
+            //   muteSelf.textContent = isMuted
+            //     ? "Unmute yourself"
+            //     : "Mute yourself";
+            //   selfStream.getAudioTracks()[0].enabled = isMuted;
+            // });
+            // muteSelf.style.display = "block";
           } catch (error) {
             console.log(" ****** Failed to get local stream: ", error);
             window.location.assign("/");
@@ -395,19 +435,20 @@
             peerVideoTag.className = "video-wrapper";
             muteOverlay.className = "mute-overlay";
             muteBtn.textContent = "Unmute";
-            muteBtn.style.zIndex = "3";
+            muteBtn.style.zIndex = "300";
             muteBtn.style.position = "relative";
-            muteOverlay.addEventListener("click", function () {
-              const isFirst = videoWrapper.children[0] === this.parentElement;
-              if (isMobile && !isFirst) {
-                videoWrapper.removeChild(this.parentElement);
-                videoWrapper.insertBefore(
-                  this.parentElement,
-                  videoWrapper.children[0]
-                );
-              }
-            });
-            muteBtn.addEventListener("click", function () {
+            // muteOverlay.addEventListener("click", function () {
+            //   const isFirst = videoWrapper.children[0] === this.parentElement;
+            //   if (isMobile && !isFirst) {
+            //     videoWrapper.removeChild(this.parentElement);
+            //     videoWrapper.insertBefore(
+            //       this.parentElement,
+            //       videoWrapper.children[0]
+            //     );
+            //   }
+            // });
+            muteBtn.addEventListener("click", function (e) {
+              e && e.stopPropagation && e.stopPropagation();
               if (video.muted) {
                 video.muted = false;
                 video.volume = 1;
@@ -428,15 +469,36 @@
             peerVideoTag.appendChild(muteOverlay);
             videoWrapper.appendChild(peerVideoTag);
             setInCallUI();
+            if (hasUnmutedAll) {
+              const videos = Array.from(videoWrapper.children);
+              const width = (100 / videos.length).toFixed(2) + "vw";
+              videos.forEach((elm) => {
+                elm.style.width = width;
+              });
+              document.querySelector(".video-self").removeAttribute("style");
+            }
           });
 
           peer.on("error", (err) => {
             console.log("----peer err.message: ", err.message);
             console.log("----peer error: ", err);
-            if (err.code === "ERR_DATA_CHANNEL") {
+            if (
+              err.code === "ERR_DATA_CHANNEL" ||
+              err.message === "Connection failed."
+            ) {
+              const videoWrapper = document.querySelector(".video-call");
               videoWrapper.removeChild(peerVideoTag);
-            } else if (err.message === "Connection failed.") {
-              videoWrapper.removeChild(peerVideoTag);
+              const videos = Array.from(videoWrapper.children);
+              if (!videos.length) {
+                document
+                  .querySelector(".video-self")
+                  .setAttribute("style", "width: 100%;");
+              } else {
+                const width = (100 / videos.length).toFixed(2) + "vw";
+                videos.forEach((elm) => {
+                  elm.style.width = width;
+                });
+              }
             }
           });
           peer.on("data", function (data) {
@@ -598,8 +660,8 @@
             let startCall = document.querySelector(".start-call");
             startCall.style.display = "block";
             startCall.addEventListener("click", function () {
-              let linkContainer = document.querySelector(".link-container");
-              linkContainer.style.display = "block";
+              // let linkContainer = document.querySelector(".link-container");
+              // linkContainer.style.display = "block";
               startCall.parentElement.removeChild(startCall);
               window.location.assign("/room-" + name);
             });
@@ -613,7 +675,7 @@
                 channelsView.innerHTML =
                   'There are currently no rooms active. Start your own chat room by clicking "Start a new room" button.';
 
-                console.log("------------rooms------------", rooms);
+                // console.log("------------rooms------------", rooms);
                 if (!rooms) {
                   return;
                 }
