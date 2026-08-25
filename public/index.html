@@ -393,6 +393,7 @@
             !navigator.mediaDevices ||
             typeof navigator.mediaDevices.getUserMedia !== "function"
           ) {
+            joinCall.disabled = true;
             mediaError.textContent =
               "This browser does not support camera and microphone access. Try the latest Safari or Chrome.";
             mediaError.style.display = "block";

@@ -67,16 +67,19 @@ async function installBrowserStubs(page, mediaResult = "success") {
 
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
-      value: {
-        getUserMedia: async () => {
-          window.__e2eMediaCalls = (window.__e2eMediaCalls || 0) + 1;
-          if (mediaResult !== "success") {
-            const error = new DOMException("Permission denied", mediaResult);
-            throw error;
-          }
-          return { getTracks: () => [] };
-        },
-      },
+      value:
+        mediaResult === "unsupported"
+          ? undefined
+          : {
+              getUserMedia: async () => {
+                window.__e2eMediaCalls = (window.__e2eMediaCalls || 0) + 1;
+                if (mediaResult !== "success") {
+                  const error = new DOMException("Permission denied", mediaResult);
+                  throw error;
+                }
+                return { getTracks: () => [] };
+              },
+            },
     });
   }, { mediaResult });
 }
@@ -108,6 +111,17 @@ test.describe("room joining", () => {
     await expect(page).toHaveURL(/\/room-e2e-denied$/);
     await expect(joinButton).toBeEnabled();
     await expect(page.getByText("Sorry we got an error")).toHaveCount(0);
+  });
+
+  test("disables joining when media access is unsupported", async ({ page }) => {
+    await installBrowserStubs(page, "unsupported");
+    await page.goto("/room-e2e-unsupported");
+
+    const joinButton = page.getByRole("button", {
+      name: /Join room \(allow camera and microphone\)/,
+    });
+    await expect(joinButton).toBeDisabled();
+    await expect(page.getByRole("alert")).toHaveText(/does not support camera and microphone access/);
   });
 
   test("registers the room participant after media access succeeds", async ({ page }) => {
