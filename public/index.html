@@ -22,7 +22,7 @@
       initialize the SDK after all desired features are loaded, set useEmulator to false
       to avoid connecting the SDK to running emulators.
     -->
-    <script defer src="/__/firebase/init.js?useEmulator=true"></script>
+    <script defer src="/__/firebase/init.js"></script>
 
     <script src="https://unpkg.com/simple-peer@9.8.0/simplepeer.min.js"></script>
     <style media="screen">
@@ -47,9 +47,18 @@
         padding: 6px 8px;
       }
       .start-call,
+      .join-call,
       .channels {
         z-index: 200;
         position: relative;
+      }
+      .media-error {
+        display: none;
+        position: relative;
+        z-index: 200;
+        max-width: 520px;
+        margin: 12px 8px;
+        color: #ffb4ab;
       }
       .container {
         left: 0;
@@ -309,6 +318,10 @@
         <pre id="messages"></pre> -->
     <div class="container">
       <button class="start-call" style="display: none">Start a new room</button>
+      <button class="join-call" style="display: none">
+        Join room (allow camera and microphone)
+      </button>
+      <div class="media-error" role="alert"></div>
       <!-- <div class="link-container" style="display: none">
         <label>Chat link:</label>
         <br />
@@ -355,6 +368,67 @@
         // const chatLink = window.location.origin + window.location.pathname;
         // document.getElementById("yourId").value = chatLink;
 
+        const joinCall = document.querySelector(".join-call");
+        const mediaError = document.querySelector(".media-error");
+
+        function describeMediaError(error) {
+          switch (error && error.name) {
+            case "NotAllowedError":
+              return "Camera and microphone access was blocked. Allow both for this site, then try again.";
+            case "NotFoundError":
+              return "No camera or microphone was found on this device.";
+            case "NotReadableError":
+              return "The camera or microphone is already being used by another app or tab.";
+            case "SecurityError":
+              return "This browser blocked camera and microphone access for security reasons.";
+            default:
+              return `Could not access the camera and microphone (${(error && error.name) || "unknown error"}).`;
+          }
+        }
+
+        async function requestLocalStream() {
+          joinCall.style.display = "block";
+
+          if (
+            !navigator.mediaDevices ||
+            typeof navigator.mediaDevices.getUserMedia !== "function"
+          ) {
+            joinCall.disabled = true;
+            mediaError.textContent =
+              "This browser does not support camera and microphone access. Try the latest Safari or Chrome.";
+            mediaError.style.display = "block";
+            return null;
+          }
+
+          return new Promise((resolve) => {
+            async function requestFromClick() {
+              joinCall.disabled = true;
+              mediaError.style.display = "none";
+
+              try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                  video: true,
+                  audio: true,
+                });
+                joinCall.style.display = "none";
+                resolve(stream);
+              } catch (error) {
+                console.error("Failed to get local stream:", error);
+                mediaError.textContent = describeMediaError(error);
+                mediaError.style.display = "block";
+                joinCall.disabled = false;
+                joinCall.addEventListener("click", requestFromClick, {
+                  once: true,
+                });
+              }
+            }
+
+            joinCall.addEventListener("click", requestFromClick, {
+              once: true,
+            });
+          });
+        }
+
         const videoWrapper = document.querySelector(".video-call");
         const unmuteAllBtn = document.querySelector(".unmute-all");
         let hasUnmutedAll = false;
@@ -388,34 +462,11 @@
 
         let selfStream;
         if (roomId) {
-          try {
-            selfStream = await navigator.mediaDevices.getUserMedia({
-              video: true,
-              audio: true,
-            });
-            play(".video-self", selfStream);
-            // let isMuted = false;
-            // const muteSelf = document.querySelector(".mute-self");
-            // muteSelf.addEventListener("click", function () {
-            //   isMuted = !isMuted;
-            //   muteSelf.textContent = isMuted
-            //     ? "Unmute yourself"
-            //     : "Mute yourself";
-            //   selfStream.getAudioTracks()[0].enabled = isMuted;
-            // });
-            // muteSelf.style.display = "block";
-          } catch (error) {
-            console.log(" ****** Failed to get local stream: ", error);
-            if (error.message.indexOf("Could not start video source") !== -1) {
-              alert(
-                "Could not get your video. Please check if you already have another tab open with this website "
-              );
-              console.log("------------selfStream------------", selfStream);
-            } else {
-              alert("Sorry we got an error :/ ");
-              window.location.assign("/");
-            }
+          selfStream = await requestLocalStream();
+          if (!selfStream) {
+            return;
           }
+          play(".video-self", selfStream);
         }
         function createPeer(isAnswer) {
           const peer = new SimplePeer({
