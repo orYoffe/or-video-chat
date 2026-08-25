@@ -48,6 +48,7 @@
       }
       .start-call,
       .join-call,
+      .share-screen,
       .channels {
         z-index: 200;
         position: relative;
@@ -100,6 +101,13 @@
         left: 50%;
         transform: translateX(-50%);
         top: 10px;
+        z-index: 100;
+      }
+      .share-screen {
+        position: fixed;
+        left: 50%;
+        transform: translateX(-50%);
+        top: 58px;
         z-index: 100;
       }
       .mute-self {
@@ -332,6 +340,7 @@
       <!-- <div class="buttons"> -->
       <a href="/" class="link-home" style="display: none">Leave call</a>
       <button class="fullscreen" style="display: none">Fullscreen</button>
+      <button class="share-screen" style="display: none">Share screen</button>
       <button class="mute-self" style="display: none">Mute yourself</button>
       <!-- </div> -->
       <div class="video-call" style="opacity: 0"></div>
@@ -370,14 +379,38 @@
 
         const joinCall = document.querySelector(".join-call");
         const mediaError = document.querySelector(".media-error");
+        const shareScreen = document.querySelector(".share-screen");
+        let screenStream;
+        const peers = new Set();
 
-        function describeMediaError(error) {
+        async function getPermissionState(name) {
+          if (!navigator.permissions || typeof navigator.permissions.query !== "function") {
+            return "unknown";
+          }
+
+          try {
+            return (await navigator.permissions.query({ name })).state;
+          } catch {
+            return "unknown";
+          }
+        }
+
+        async function describeMediaError(error) {
           switch (error && error.name) {
-            case "NotAllowedError":
+            case "NotAllowedError": {
+              const [cameraState, microphoneState] = await Promise.all([
+                getPermissionState("camera"),
+                getPermissionState("microphone"),
+              ]);
+              const permissionStatus =
+                cameraState === "unknown" && microphoneState === "unknown"
+                  ? ""
+                  : ` Permission status: camera ${cameraState}, microphone ${microphoneState}.`;
               if (/Android/i.test(navigator.userAgent)) {
-                return "Camera and microphone access was blocked. In Chrome, open the site controls icon beside the address, set Camera and Microphone to Allow, reload this room, then try again.";
+                return `Camera and microphone access was blocked. In Chrome, open the site controls icon beside the address, set Camera and Microphone to Allow, reload this room, then try again.${permissionStatus}`;
               }
-              return "Camera and microphone access was blocked. Allow both for this site, reload this room, then try again.";
+              return `Camera and microphone access was blocked. Allow both for this site, reload this room, then try again.${permissionStatus}`;
+            }
             case "NotFoundError":
               return "No camera or microphone was found on this device.";
             case "NotReadableError":
@@ -388,6 +421,99 @@
               return `Could not access the camera and microphone (${(error && error.name) || "unknown error"}).`;
           }
         }
+
+        function canShareScreen() {
+          return (
+            navigator.mediaDevices &&
+            typeof navigator.mediaDevices.getDisplayMedia === "function"
+          );
+        }
+
+        function configureScreenShare() {
+          shareScreen.style.display = "block";
+          shareScreen.disabled = !canShareScreen();
+          if (!canShareScreen()) {
+            shareScreen.textContent = "Screen sharing unavailable";
+          }
+        }
+
+        async function stopScreenSharing() {
+          if (!screenStream) {
+            return;
+          }
+
+          const activeScreenStream = screenStream;
+          screenStream = null;
+          const screenTrack = activeScreenStream.getVideoTracks()[0];
+          const cameraTrack = selfStream && selfStream.getVideoTracks()[0];
+
+          for (const peer of peers) {
+            if (peer.replaceTrack && screenTrack && cameraTrack) {
+              peer.replaceTrack(screenTrack, cameraTrack, selfStream);
+            }
+          }
+
+          screenTrack?.stop();
+          play(".video-self", selfStream);
+          shareScreen.textContent = "Share screen";
+          shareScreen.disabled = false;
+        }
+
+        async function toggleScreenSharing() {
+          if (screenStream) {
+            await stopScreenSharing();
+            return;
+          }
+
+          if (!canShareScreen()) {
+            configureScreenShare();
+            mediaError.textContent =
+              "This browser does not support screen sharing. Use the latest Chrome or Safari on a supported device.";
+            mediaError.style.display = "block";
+            return;
+          }
+
+          shareScreen.disabled = true;
+          mediaError.style.display = "none";
+
+          try {
+            const nextScreenStream = await navigator.mediaDevices.getDisplayMedia({
+              video: true,
+              audio: false,
+            });
+            const nextScreenTrack = nextScreenStream.getVideoTracks()[0];
+            const cameraTrack = selfStream && selfStream.getVideoTracks()[0];
+
+            if (!nextScreenTrack || !cameraTrack) {
+              nextScreenStream.getTracks().forEach((track) => track.stop());
+              throw new Error("No screen video track was returned.");
+            }
+
+            for (const peer of peers) {
+              if (peer.replaceTrack) {
+                peer.replaceTrack(cameraTrack, nextScreenTrack, selfStream);
+              }
+            }
+
+            screenStream = nextScreenStream;
+            play(".video-self", screenStream);
+            shareScreen.textContent = "Stop sharing screen";
+            nextScreenTrack.addEventListener("ended", stopScreenSharing, {
+              once: true,
+            });
+          } catch (error) {
+            if (error && error.name !== "AbortError") {
+              console.error("Failed to share the screen:", error);
+              mediaError.textContent =
+                "Screen sharing could not start. Allow screen capture when prompted, then try again.";
+              mediaError.style.display = "block";
+            }
+          } finally {
+            shareScreen.disabled = false;
+          }
+        }
+
+        shareScreen.addEventListener("click", toggleScreenSharing);
 
         async function requestLocalStream() {
           joinCall.style.display = "block";
@@ -417,7 +543,7 @@
                 resolve(stream);
               } catch (error) {
                 console.error("Failed to get local stream:", error);
-                mediaError.textContent = describeMediaError(error);
+                mediaError.textContent = await describeMediaError(error);
                 mediaError.style.display = "block";
                 joinCall.disabled = false;
                 joinCall.addEventListener("click", requestFromClick, {
@@ -470,6 +596,7 @@
             return;
           }
           play(".video-self", selfStream);
+          configureScreenShare();
         }
         function createPeer(isAnswer) {
           const peer = new SimplePeer({
@@ -477,6 +604,7 @@
             trickle: false,
             stream: selfStream,
           });
+          peers.add(peer);
 
           let peerVideoTag;
 
@@ -565,6 +693,9 @@
           });
           peer.on("data", function (data) {
             console.log("------------data------------", data);
+          });
+          peer.on("close", function () {
+            peers.delete(peer);
           });
 
           return peer;
