@@ -32,11 +32,14 @@ async function installBrowserStubs(
       };
     }
 
-    function createStream(kind) {
+    function createStream(kind, constraints = { video: true, audio: true }) {
       const tracks =
         kind === "screen"
           ? [createTrack("video")]
-          : [createTrack("video"), createTrack("audio")];
+          : [
+              ...(constraints.video ? [createTrack("video")] : []),
+              ...(constraints.audio ? [createTrack("audio")] : []),
+            ];
       return {
         getTracks: () => tracks,
         getVideoTracks: () => tracks.filter((track) => track.kind === "video"),
@@ -104,13 +107,23 @@ async function installBrowserStubs(
       mediaResult === "unsupported"
         ? undefined
         : {
-            getUserMedia: async () => {
+            getUserMedia: async (constraints) => {
               window.__e2eMediaCalls = (window.__e2eMediaCalls || 0) + 1;
-              if (mediaResult !== "success") {
+              window.__e2eMediaRequests = window.__e2eMediaRequests || [];
+              window.__e2eMediaRequests.push(constraints);
+              if (
+                mediaResult === "split-fallback" &&
+                constraints.video &&
+                constraints.audio
+              ) {
+                const error = new DOMException("Permission denied", "NotAllowedError");
+                throw error;
+              }
+              if (mediaResult !== "success" && mediaResult !== "split-fallback") {
                 const error = new DOMException("Permission denied", mediaResult);
                 throw error;
               }
-              return createStream("camera");
+              return createStream("camera", constraints);
             },
           };
 
@@ -129,6 +142,14 @@ async function installBrowserStubs(
       configurable: true,
       value: mediaDevices,
     });
+    if (mediaResult === "split-fallback") {
+      Object.defineProperty(navigator.permissions, "query", {
+        configurable: true,
+        value: async ({ name }) => ({
+          state: name === "camera" ? "granted" : "prompt",
+        }),
+      });
+    }
   }, { mediaResult, screenShareResult });
 }
 
@@ -186,6 +207,22 @@ test.describe("room joining", () => {
     });
     await expect(page.locator(".join-call")).toBeHidden();
     await expect.poll(() => page.evaluate(() => window.__e2eMediaCalls)).toBe(1);
+  });
+
+  test("falls back to separate camera and microphone requests on mobile", async ({ page }) => {
+    await installBrowserStubs(page, "split-fallback");
+    await page.goto("/room-e2e-split-permissions");
+
+    await page
+      .getByRole("button", { name: /Join room \(allow camera and microphone\)/ })
+      .click();
+
+    await expect(page.locator(".join-call")).toBeHidden();
+    await expect.poll(() => page.evaluate(() => window.__e2eMediaRequests)).toEqual([
+      { video: true, audio: true },
+      { video: true, audio: false },
+      { video: false, audio: true },
+    ]);
   });
 
   test("can start and stop screen sharing after joining", async ({ page }) => {
