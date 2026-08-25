@@ -411,7 +411,13 @@
                   ? ""
                   : ` Permission status: camera ${cameraState}, microphone ${microphoneState}.`;
               if (/Android/i.test(navigator.userAgent)) {
+                if (cameraState === "granted" && microphoneState === "prompt") {
+                  return `Chrome still needs microphone access. Tap Allow when Chrome asks for the microphone, then try again.${permissionStatus}`;
+                }
                 return `Camera and microphone access was blocked. In Chrome, open the site controls icon beside the address, set Camera and Microphone to Allow, reload this room, then try again.${permissionStatus}`;
+              }
+              if (cameraState === "granted" && microphoneState === "prompt") {
+                return `Chrome still needs microphone access. Allow the microphone when prompted, then try again.${permissionStatus}`;
               }
               return `Camera and microphone access was blocked. Allow both for this site, reload this room, then try again.${permissionStatus}`;
             }
@@ -519,6 +525,55 @@
 
         shareScreen.addEventListener("click", toggleScreenSharing);
 
+        function mergeMediaStreams(...streams) {
+          const tracks = streams.flatMap((stream) => stream.getTracks());
+          try {
+            return new MediaStream(tracks);
+          } catch {
+            return {
+              getTracks: () => tracks,
+              getVideoTracks: () => tracks.filter((track) => track.kind === "video"),
+              getAudioTracks: () => tracks.filter((track) => track.kind === "audio"),
+            };
+          }
+        }
+
+        async function requestMediaWithPermissionFallback() {
+          try {
+            return await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: true,
+            });
+          } catch (combinedError) {
+            if (combinedError?.name !== "NotAllowedError") {
+              throw combinedError;
+            }
+
+            const [cameraState, microphoneState] = await Promise.all([
+              getPermissionState("camera"),
+              getPermissionState("microphone"),
+            ]);
+            if (cameraState !== "granted" || microphoneState !== "prompt") {
+              throw combinedError;
+            }
+
+            const cameraStream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false,
+            });
+            try {
+              const microphoneStream = await navigator.mediaDevices.getUserMedia({
+                video: false,
+                audio: true,
+              });
+              return mergeMediaStreams(cameraStream, microphoneStream);
+            } catch (microphoneError) {
+              cameraStream.getTracks().forEach((track) => track.stop());
+              throw microphoneError;
+            }
+          }
+        }
+
         async function requestLocalStream() {
           joinCall.style.display = "block";
 
@@ -539,10 +594,7 @@
               mediaError.style.display = "none";
 
               try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                  video: true,
-                  audio: true,
-                });
+                const stream = await requestMediaWithPermissionFallback();
                 joinCall.style.display = "none";
                 resolve(stream);
               } catch (error) {
