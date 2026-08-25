@@ -1,12 +1,47 @@
 import { expect, test } from "playwright/test";
 
-async function installBrowserStubs(page, mediaResult = "success") {
-  await page.addInitScript(({ mediaResult }) => {
+async function installBrowserStubs(
+  page,
+  mediaResult = "success",
+  screenShareResult = "success"
+) {
+  await page.addInitScript(({ mediaResult, screenShareResult }) => {
     const writes = [];
     const authUser = { uid: "e2e-user" };
 
     function snapshot(value) {
       return { val: () => value };
+    }
+
+    function createTrack(kind) {
+      const listeners = new Map();
+      return {
+        kind,
+        readyState: "live",
+        addEventListener(event, callback) {
+          const callbacks = listeners.get(event) || [];
+          callbacks.push(callback);
+          listeners.set(event, callbacks);
+        },
+        stop() {
+          this.readyState = "ended";
+          for (const callback of listeners.get("ended") || []) {
+            callback();
+          }
+        },
+      };
+    }
+
+    function createStream(kind) {
+      const tracks =
+        kind === "screen"
+          ? [createTrack("video")]
+          : [createTrack("video"), createTrack("audio")];
+      return {
+        getTracks: () => tracks,
+        getVideoTracks: () => tracks.filter((track) => track.kind === "video"),
+        getAudioTracks: () => tracks.filter((track) => track.kind === "audio"),
+      };
     }
 
     function ref(path) {
@@ -65,23 +100,36 @@ async function installBrowserStubs(page, mediaResult = "success") {
       },
     });
 
+    const mediaDevices =
+      mediaResult === "unsupported"
+        ? undefined
+        : {
+            getUserMedia: async () => {
+              window.__e2eMediaCalls = (window.__e2eMediaCalls || 0) + 1;
+              if (mediaResult !== "success") {
+                const error = new DOMException("Permission denied", mediaResult);
+                throw error;
+              }
+              return createStream("camera");
+            },
+          };
+
+    if (mediaDevices && screenShareResult !== "unsupported") {
+      mediaDevices.getDisplayMedia = async () => {
+        window.__e2eScreenCalls = (window.__e2eScreenCalls || 0) + 1;
+        if (screenShareResult !== "success") {
+          const error = new DOMException("Screen capture denied", screenShareResult);
+          throw error;
+        }
+        return createStream("screen");
+      };
+    }
+
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
-      value:
-        mediaResult === "unsupported"
-          ? undefined
-          : {
-              getUserMedia: async () => {
-                window.__e2eMediaCalls = (window.__e2eMediaCalls || 0) + 1;
-                if (mediaResult !== "success") {
-                  const error = new DOMException("Permission denied", mediaResult);
-                  throw error;
-                }
-                return { getTracks: () => [] };
-              },
-            },
+      value: mediaDevices,
     });
-  }, { mediaResult });
+  }, { mediaResult, screenShareResult });
 }
 
 test.describe("room joining", () => {
@@ -138,5 +186,37 @@ test.describe("room joining", () => {
     });
     await expect(page.locator(".join-call")).toBeHidden();
     await expect.poll(() => page.evaluate(() => window.__e2eMediaCalls)).toBe(1);
+  });
+
+  test("can start and stop screen sharing after joining", async ({ page }) => {
+    await installBrowserStubs(page);
+    await page.goto("/room-e2e-screen-share");
+
+    await page
+      .getByRole("button", { name: /Join room \(allow camera and microphone\)/ })
+      .click();
+
+    const shareButton = page.getByRole("button", { name: "Share screen" });
+    await expect(shareButton).toBeVisible();
+    await shareButton.click();
+
+    await expect(page.getByRole("button", { name: "Stop sharing screen" })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.__e2eScreenCalls)).toBe(1);
+
+    await page.getByRole("button", { name: "Stop sharing screen" }).click();
+    await expect(page.getByRole("button", { name: "Share screen" })).toBeVisible();
+  });
+
+  test("disables screen sharing when the browser does not support it", async ({ page }) => {
+    await installBrowserStubs(page, "success", "unsupported");
+    await page.goto("/room-e2e-screen-unsupported");
+
+    await page
+      .getByRole("button", { name: /Join room \(allow camera and microphone\)/ })
+      .click();
+
+    const shareButton = page.getByRole("button", { name: "Screen sharing unavailable" });
+    await expect(shareButton).toBeVisible();
+    await expect(shareButton).toBeDisabled();
   });
 });
