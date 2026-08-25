@@ -389,7 +389,11 @@
           }
 
           try {
-            return (await navigator.permissions.query({ name })).state;
+            const permissionQuery = navigator.permissions.query({ name });
+            const timeout = new Promise((resolve) => {
+              setTimeout(() => resolve({ state: "unknown" }), 250);
+            });
+            return (await Promise.race([permissionQuery, timeout])).state;
           } catch {
             return "unknown";
           }
