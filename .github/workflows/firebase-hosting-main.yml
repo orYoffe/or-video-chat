@@ -1,0 +1,39 @@
+name: Deploy Firebase Hosting production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: firebase-hosting-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium webkit
+      - run: pnpm test:e2e
+
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_OR_VIDEO_CHAT }}'
+          projectId: or-video-chat
+          channelId: live
