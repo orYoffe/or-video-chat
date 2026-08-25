@@ -1,6 +1,7 @@
 {
   "name": "or-video-chat-e2e",
   "private": true,
+  "packageManager": "pnpm@11.19.0",
   "scripts": {
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed"

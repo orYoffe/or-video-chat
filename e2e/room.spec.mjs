@@ -55,6 +55,16 @@ async function installBrowserStubs(page, mediaResult = "success") {
       database: () => database,
     };
 
+    Object.defineProperty(HTMLMediaElement.prototype, "srcObject", {
+      configurable: true,
+      get() {
+        return this.__e2eSrcObject || null;
+      },
+      set(value) {
+        this.__e2eSrcObject = value;
+      },
+    });
+
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: {
@@ -64,7 +74,7 @@ async function installBrowserStubs(page, mediaResult = "success") {
             const error = new DOMException("Permission denied", mediaResult);
             throw error;
           }
-          return new MediaStream();
+          return { getTracks: () => [] };
         },
       },
     });
