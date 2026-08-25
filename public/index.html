@@ -374,7 +374,10 @@
         function describeMediaError(error) {
           switch (error && error.name) {
             case "NotAllowedError":
-              return "Camera and microphone access was blocked. Allow both for this site, then try again.";
+              if (/Android/i.test(navigator.userAgent)) {
+                return "Camera and microphone access was blocked. In Chrome, open the site controls icon beside the address, set Camera and Microphone to Allow, reload this room, then try again.";
+              }
+              return "Camera and microphone access was blocked. Allow both for this site, reload this room, then try again.";
             case "NotFoundError":
               return "No camera or microphone was found on this device.";
             case "NotReadableError":
