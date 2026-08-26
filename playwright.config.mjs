@@ -24,7 +24,7 @@ export default defineConfig({
     },
     {
       name: "android-chromium",
-      use: { ...devices["Pixel 5"], browserName: "chromium" },
+      use: { ...devices["Pixel 7"], browserName: "chromium" },
     },
     {
       name: "mobile-safari",

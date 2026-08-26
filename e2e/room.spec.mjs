@@ -3,9 +3,10 @@ import { expect, test } from "playwright/test";
 async function installBrowserStubs(
   page,
   mediaResult = "success",
-  screenShareResult = "success"
+  screenShareResult = "success",
+  { mediaResults, permissionStates } = {}
 ) {
-  await page.addInitScript(({ mediaResult, screenShareResult }) => {
+  await page.addInitScript(({ mediaResult, screenShareResult, mediaResults, permissionStates }) => {
     const writes = [];
     const authUser = { uid: "e2e-user" };
 
@@ -115,8 +116,9 @@ async function installBrowserStubs(
               window.__e2eMediaCalls = (window.__e2eMediaCalls || 0) + 1;
               window.__e2eMediaRequests = window.__e2eMediaRequests || [];
               window.__e2eMediaRequests.push(constraints);
-              if (mediaResult !== "success") {
-                const error = new DOMException("Permission denied", mediaResult);
+              const result = mediaResults?.[window.__e2eMediaCalls - 1] || mediaResult;
+              if (result !== "success") {
+                const error = new DOMException("Permission denied", result);
                 throw error;
               }
               return createStream("camera", constraints);
@@ -140,7 +142,17 @@ async function installBrowserStubs(
       configurable: true,
       value: mediaDevices,
     });
-  }, { mediaResult, screenShareResult });
+    if (permissionStates) {
+      Object.defineProperty(navigator, "permissions", {
+        configurable: true,
+        value: {
+          query: async ({ name }) => ({
+            state: permissionStates[name] || "unknown",
+          }),
+        },
+      });
+    }
+  }, { mediaResult, screenShareResult, mediaResults, permissionStates });
 }
 
 test.describe("room joining", () => {
@@ -183,7 +195,7 @@ test.describe("room joining", () => {
     await expect(page.getByRole("alert")).toHaveText(/does not support camera and microphone access/);
   });
 
-  test("registers the room participant after media access succeeds", async ({ page }, testInfo) => {
+  test("registers the room participant after media access succeeds", async ({ page }) => {
     await installBrowserStubs(page);
     await page.goto("/room-e2e-success");
 
@@ -196,15 +208,13 @@ test.describe("room joining", () => {
       value: { uid: "e2e-user" },
     });
     await expect(page.locator(".join-call")).toBeHidden();
-    await expect
-      .poll(() => page.evaluate(() => window.__e2eMediaCalls))
-      .toBe(testInfo.project.name === "android-chromium" ? 2 : 1);
+    await expect.poll(() => page.evaluate(() => window.__e2eMediaCalls)).toBe(1);
   });
 
-  test("requests the microphone before the camera on Android", async ({ page }, testInfo) => {
+  test("requests camera and microphone together on Android", async ({ page }, testInfo) => {
     testInfo.skip(testInfo.project.name !== "android-chromium", "Android-only permission order");
     await installBrowserStubs(page);
-    await page.goto("/room-e2e-split-permissions");
+    await page.goto("/room-e2e-android-permissions");
 
     await page
       .getByRole("button", { name: /Join room \(allow camera and microphone\)/ })
@@ -212,6 +222,25 @@ test.describe("room joining", () => {
 
     await expect(page.locator(".join-call")).toBeHidden();
     await expect.poll(() => page.evaluate(() => window.__e2eMediaRequests)).toEqual([
+      { video: true, audio: true },
+    ]);
+  });
+
+  test("recovers Android when one device permission is already granted", async ({ page }, testInfo) => {
+    testInfo.skip(testInfo.project.name !== "android-chromium", "Android-only permission fallback");
+    await installBrowserStubs(page, "success", "success", {
+      mediaResults: ["NotAllowedError", "success", "success"],
+      permissionStates: { camera: "granted", microphone: "prompt" },
+    });
+    await page.goto("/room-e2e-android-permission-fallback");
+
+    await page
+      .getByRole("button", { name: /Join room \(allow camera and microphone\)/ })
+      .click();
+
+    await expect(page.locator(".join-call")).toBeHidden();
+    await expect.poll(() => page.evaluate(() => window.__e2eMediaRequests)).toEqual([
+      { video: true, audio: true },
       { video: false, audio: true },
       { video: true, audio: false },
     ]);

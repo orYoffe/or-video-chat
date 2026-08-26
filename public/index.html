@@ -558,33 +558,69 @@
           }
         }
 
-        async function requestAndroidMedia() {
-          const microphoneStream = await navigator.mediaDevices.getUserMedia({
-            video: false,
-            audio: true,
-          });
-
-          try {
-            const cameraStream = await navigator.mediaDevices.getUserMedia({
-              video: true,
-              audio: false,
-            });
-            return mergeMediaStreams(cameraStream, microphoneStream);
-          } catch (cameraError) {
-            microphoneStream.getTracks().forEach((track) => track.stop());
-            throw cameraError;
-          }
-        }
-
         async function requestMediaStream() {
-          if (/Android/i.test(navigator.userAgent)) {
-            return requestAndroidMedia();
-          }
-
-          return navigator.mediaDevices.getUserMedia({
+          const mediaConstraints = {
             video: true,
             audio: true,
-          });
+          };
+
+          try {
+            // Keep the normal request in one user gesture. Chrome can show one
+            // coherent prompt for both devices, and this is also the most
+            // reliable path after a user resets site permissions.
+            return await navigator.mediaDevices.getUserMedia(mediaConstraints);
+          } catch (combinedError) {
+            if (
+              !/Android/i.test(navigator.userAgent) ||
+              combinedError?.name !== "NotAllowedError"
+            ) {
+              throw combinedError;
+            }
+
+            // Some Android Chrome versions reject a combined request when one
+            // device is already granted and the other is still prompting. Ask
+            // for the missing device first, then acquire a stream for the
+            // already-granted device so the peer connection still gets both
+            // tracks.
+            const [cameraState, microphoneState] = await Promise.all([
+              getPermissionState("camera"),
+              getPermissionState("microphone"),
+            ]);
+            if (
+              !(
+                (cameraState === "granted" && microphoneState === "prompt") ||
+                (cameraState === "prompt" && microphoneState === "granted")
+              )
+            ) {
+              throw combinedError;
+            }
+
+            const streams = [];
+            const fallbackConstraints =
+              cameraState === "granted"
+                ? [
+                    { video: false, audio: true },
+                    { video: true, audio: false },
+                  ]
+                : [
+                    { video: true, audio: false },
+                    { video: false, audio: true },
+                  ];
+
+            try {
+              for (const constraints of fallbackConstraints) {
+                streams.push(
+                  await navigator.mediaDevices.getUserMedia(constraints)
+                );
+              }
+              return mergeMediaStreams(...streams);
+            } catch (fallbackError) {
+              streams.forEach((stream) =>
+                stream.getTracks().forEach((track) => track.stop())
+              );
+              throw fallbackError;
+            }
+          }
         }
 
         async function requestLocalStream() {
