@@ -102,6 +102,10 @@ async function installBrowserStubs(
         this.__e2eSrcObject = value;
       },
     });
+    Object.defineProperty(HTMLMediaElement.prototype, "play", {
+      configurable: true,
+      value: () => Promise.resolve(),
+    });
 
     const mediaDevices =
       mediaResult === "unsupported"
@@ -111,15 +115,7 @@ async function installBrowserStubs(
               window.__e2eMediaCalls = (window.__e2eMediaCalls || 0) + 1;
               window.__e2eMediaRequests = window.__e2eMediaRequests || [];
               window.__e2eMediaRequests.push(constraints);
-              if (
-                mediaResult === "split-fallback" &&
-                constraints.video &&
-                constraints.audio
-              ) {
-                const error = new DOMException("Permission denied", "NotAllowedError");
-                throw error;
-              }
-              if (mediaResult !== "success" && mediaResult !== "split-fallback") {
+              if (mediaResult !== "success") {
                 const error = new DOMException("Permission denied", mediaResult);
                 throw error;
               }
@@ -128,13 +124,15 @@ async function installBrowserStubs(
           };
 
     if (mediaDevices && screenShareResult !== "unsupported") {
-      mediaDevices.getDisplayMedia = async () => {
+      mediaDevices.getDisplayMedia = async (constraints) => {
         window.__e2eScreenCalls = (window.__e2eScreenCalls || 0) + 1;
+        window.__e2eScreenRequests = window.__e2eScreenRequests || [];
+        window.__e2eScreenRequests.push(constraints);
         if (screenShareResult !== "success") {
           const error = new DOMException("Screen capture denied", screenShareResult);
           throw error;
         }
-        return createStream("screen");
+        return createStream("screen", constraints);
       };
     }
 
@@ -142,14 +140,6 @@ async function installBrowserStubs(
       configurable: true,
       value: mediaDevices,
     });
-    if (mediaResult === "split-fallback") {
-      Object.defineProperty(navigator.permissions, "query", {
-        configurable: true,
-        value: async ({ name }) => ({
-          state: name === "camera" ? "granted" : "prompt",
-        }),
-      });
-    }
   }, { mediaResult, screenShareResult });
 }
 
@@ -193,7 +183,7 @@ test.describe("room joining", () => {
     await expect(page.getByRole("alert")).toHaveText(/does not support camera and microphone access/);
   });
 
-  test("registers the room participant after media access succeeds", async ({ page }) => {
+  test("registers the room participant after media access succeeds", async ({ page }, testInfo) => {
     await installBrowserStubs(page);
     await page.goto("/room-e2e-success");
 
@@ -206,11 +196,14 @@ test.describe("room joining", () => {
       value: { uid: "e2e-user" },
     });
     await expect(page.locator(".join-call")).toBeHidden();
-    await expect.poll(() => page.evaluate(() => window.__e2eMediaCalls)).toBe(1);
+    await expect
+      .poll(() => page.evaluate(() => window.__e2eMediaCalls))
+      .toBe(testInfo.project.name === "android-chromium" ? 2 : 1);
   });
 
-  test("falls back to separate camera and microphone requests on mobile", async ({ page }) => {
-    await installBrowserStubs(page, "split-fallback");
+  test("requests the microphone before the camera on Android", async ({ page }, testInfo) => {
+    testInfo.skip(testInfo.project.name !== "android-chromium", "Android-only permission order");
+    await installBrowserStubs(page);
     await page.goto("/room-e2e-split-permissions");
 
     await page
@@ -219,10 +212,31 @@ test.describe("room joining", () => {
 
     await expect(page.locator(".join-call")).toBeHidden();
     await expect.poll(() => page.evaluate(() => window.__e2eMediaRequests)).toEqual([
-      { video: true, audio: true },
-      { video: true, audio: false },
       { video: false, audio: true },
+      { video: true, audio: false },
     ]);
+  });
+
+  test("keeps the audio unlock control after it is activated", async ({ page }) => {
+    await installBrowserStubs(page);
+    await page.goto("/room-e2e-audio-unlock");
+
+    await page.evaluate(() => {
+      const wrapper = document.createElement("div");
+      const video = document.createElement("video");
+      const overlay = document.createElement("div");
+      const muteButton = document.createElement("button");
+      wrapper.className = "video-wrapper";
+      overlay.appendChild(muteButton);
+      wrapper.append(video, overlay);
+      document.querySelector(".video-call").appendChild(wrapper);
+      document.querySelector(".unmute-all").style.display = "block";
+    });
+
+    await page.getByRole("button", { name: "Click to join the call" }).click();
+
+    await expect(page.locator(".unmute-all")).toHaveCount(1);
+    await expect(page.locator(".unmute-all")).toBeHidden();
   });
 
   test("can start and stop screen sharing after joining", async ({ page }) => {
@@ -239,6 +253,9 @@ test.describe("room joining", () => {
 
     await expect(page.getByRole("button", { name: "Stop sharing screen" })).toBeVisible();
     await expect.poll(() => page.evaluate(() => window.__e2eScreenCalls)).toBe(1);
+    await expect.poll(() => page.evaluate(() => window.__e2eScreenRequests)).toEqual([
+      { video: true, audio: true },
+    ]);
 
     await page.getByRole("button", { name: "Stop sharing screen" }).click();
     await expect(page.getByRole("button", { name: "Share screen" })).toBeVisible();
