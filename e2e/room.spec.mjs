@@ -111,15 +111,7 @@ async function installBrowserStubs(
               window.__e2eMediaCalls = (window.__e2eMediaCalls || 0) + 1;
               window.__e2eMediaRequests = window.__e2eMediaRequests || [];
               window.__e2eMediaRequests.push(constraints);
-              if (
-                mediaResult === "split-fallback" &&
-                constraints.video &&
-                constraints.audio
-              ) {
-                const error = new DOMException("Permission denied", "NotAllowedError");
-                throw error;
-              }
-              if (mediaResult !== "success" && mediaResult !== "split-fallback") {
+              if (mediaResult !== "success") {
                 const error = new DOMException("Permission denied", mediaResult);
                 throw error;
               }
@@ -142,14 +134,6 @@ async function installBrowserStubs(
       configurable: true,
       value: mediaDevices,
     });
-    if (mediaResult === "split-fallback") {
-      Object.defineProperty(navigator.permissions, "query", {
-        configurable: true,
-        value: async ({ name }) => ({
-          state: name === "camera" ? "granted" : "prompt",
-        }),
-      });
-    }
   }, { mediaResult, screenShareResult });
 }
 
@@ -193,7 +177,7 @@ test.describe("room joining", () => {
     await expect(page.getByRole("alert")).toHaveText(/does not support camera and microphone access/);
   });
 
-  test("registers the room participant after media access succeeds", async ({ page }) => {
+  test("registers the room participant after media access succeeds", async ({ page }, testInfo) => {
     await installBrowserStubs(page);
     await page.goto("/room-e2e-success");
 
@@ -206,11 +190,14 @@ test.describe("room joining", () => {
       value: { uid: "e2e-user" },
     });
     await expect(page.locator(".join-call")).toBeHidden();
-    await expect.poll(() => page.evaluate(() => window.__e2eMediaCalls)).toBe(1);
+    await expect
+      .poll(() => page.evaluate(() => window.__e2eMediaCalls))
+      .toBe(testInfo.project.name === "mobile-chromium" ? 2 : 1);
   });
 
-  test("falls back to separate camera and microphone requests on mobile", async ({ page }) => {
-    await installBrowserStubs(page, "split-fallback");
+  test("requests the microphone before the camera on Android", async ({ page }, testInfo) => {
+    testInfo.skip(testInfo.project.name !== "mobile-chromium", "Android-only permission order");
+    await installBrowserStubs(page);
     await page.goto("/room-e2e-split-permissions");
 
     await page
@@ -219,9 +206,8 @@ test.describe("room joining", () => {
 
     await expect(page.locator(".join-call")).toBeHidden();
     await expect.poll(() => page.evaluate(() => window.__e2eMediaRequests)).toEqual([
-      { video: true, audio: true },
-      { video: true, audio: false },
       { video: false, audio: true },
+      { video: true, audio: false },
     ]);
   });
 

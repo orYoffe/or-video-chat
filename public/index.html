@@ -538,40 +538,33 @@
           }
         }
 
-        async function requestMediaWithPermissionFallback() {
+        async function requestAndroidMedia() {
+          const microphoneStream = await navigator.mediaDevices.getUserMedia({
+            video: false,
+            audio: true,
+          });
+
           try {
-            return await navigator.mediaDevices.getUserMedia({
-              video: true,
-              audio: true,
-            });
-          } catch (combinedError) {
-            if (combinedError?.name !== "NotAllowedError") {
-              throw combinedError;
-            }
-
-            const [cameraState, microphoneState] = await Promise.all([
-              getPermissionState("camera"),
-              getPermissionState("microphone"),
-            ]);
-            if (cameraState !== "granted" || microphoneState !== "prompt") {
-              throw combinedError;
-            }
-
             const cameraStream = await navigator.mediaDevices.getUserMedia({
               video: true,
               audio: false,
             });
-            try {
-              const microphoneStream = await navigator.mediaDevices.getUserMedia({
-                video: false,
-                audio: true,
-              });
-              return mergeMediaStreams(cameraStream, microphoneStream);
-            } catch (microphoneError) {
-              cameraStream.getTracks().forEach((track) => track.stop());
-              throw microphoneError;
-            }
+            return mergeMediaStreams(cameraStream, microphoneStream);
+          } catch (cameraError) {
+            microphoneStream.getTracks().forEach((track) => track.stop());
+            throw cameraError;
           }
+        }
+
+        async function requestMediaStream() {
+          if (/Android/i.test(navigator.userAgent)) {
+            return requestAndroidMedia();
+          }
+
+          return navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true,
+          });
         }
 
         async function requestLocalStream() {
@@ -594,7 +587,7 @@
               mediaError.style.display = "none";
 
               try {
-                const stream = await requestMediaWithPermissionFallback();
+                const stream = await requestMediaStream();
                 joinCall.style.display = "none";
                 resolve(stream);
               } catch (error) {
