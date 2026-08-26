@@ -178,11 +178,12 @@ test.describe("room joining", () => {
     });
     await joinButton.click();
 
-    await expect(page.getByRole("alert")).toHaveText(/Camera and microphone access was blocked/);
     if (testInfo.project.name === "android-chromium") {
       await expect(page.getByRole("alert")).toHaveText(
-        /Android Settings > Apps > Chrome > Permissions.*Camera and Microphone/i
+        /Chrome couldn't start your camera and microphone[\s\S]*Android Settings > Apps > Chrome > Permissions[\s\S]*Camera and Microphone/i
       );
+    } else {
+      await expect(page.getByRole("alert")).toHaveText(/Camera and microphone access was blocked/);
     }
     await expect(page).toHaveURL(/\/room-e2e-denied$/);
     await expect(joinButton).toBeEnabled();
@@ -263,7 +264,7 @@ test.describe("room joining", () => {
       .click();
 
     await expect(page.getByRole("alert")).toHaveText(
-      /Android Settings > Apps > Chrome > Permissions.*Camera and Microphone/i
+      /Chrome couldn't start your camera and microphone[\s\S]*Android Settings > Apps > Chrome > Permissions[\s\S]*Camera and Microphone/i
     );
     await expect(page.getByRole("alert")).not.toHaveText(/still needs microphone access/i);
   });
