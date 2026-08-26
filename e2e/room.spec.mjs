@@ -242,7 +242,7 @@ test.describe("room joining", () => {
     await expect.poll(() => page.evaluate(() => window.__e2eMediaRequests)).toEqual([
       { video: true, audio: true },
       { video: false, audio: true },
-      { video: true, audio: false },
+      { video: true, audio: true },
     ]);
   });
 
