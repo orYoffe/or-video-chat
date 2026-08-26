@@ -192,11 +192,11 @@ test.describe("room joining", () => {
     await expect(page.locator(".join-call")).toBeHidden();
     await expect
       .poll(() => page.evaluate(() => window.__e2eMediaCalls))
-      .toBe(testInfo.project.name === "mobile-chromium" ? 2 : 1);
+      .toBe(testInfo.project.name === "android-chromium" ? 2 : 1);
   });
 
   test("requests the microphone before the camera on Android", async ({ page }, testInfo) => {
-    testInfo.skip(testInfo.project.name !== "mobile-chromium", "Android-only permission order");
+    testInfo.skip(testInfo.project.name !== "android-chromium", "Android-only permission order");
     await installBrowserStubs(page);
     await page.goto("/room-e2e-split-permissions");
 
