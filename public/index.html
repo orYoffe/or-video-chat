@@ -579,9 +579,8 @@
 
             // Some Android Chrome versions reject a combined request when one
             // device is already granted and the other is still prompting. Ask
-            // for the missing device first, then acquire a stream for the
-            // already-granted device so the peer connection still gets both
-            // tracks.
+            // for only the missing device, then retry the normal combined
+            // request after Chrome has recorded the new permission.
             const [cameraState, microphoneState] = await Promise.all([
               getPermissionState("camera"),
               getPermissionState("microphone"),
@@ -595,30 +594,20 @@
               throw combinedError;
             }
 
-            const streams = [];
-            const fallbackConstraints =
-              cameraState === "granted"
-                ? [
-                    { video: false, audio: true },
-                    { video: true, audio: false },
-                  ]
-                : [
-                    { video: true, audio: false },
-                    { video: false, audio: true },
-                  ];
+            const fallbackConstraints = cameraState === "granted"
+              ? { video: false, audio: true }
+              : { video: true, audio: false };
 
+            const permissionStream =
+              await navigator.mediaDevices.getUserMedia(fallbackConstraints);
             try {
-              for (const constraints of fallbackConstraints) {
-                streams.push(
-                  await navigator.mediaDevices.getUserMedia(constraints)
-                );
-              }
-              return mergeMediaStreams(...streams);
-            } catch (fallbackError) {
-              streams.forEach((stream) =>
-                stream.getTracks().forEach((track) => track.stop())
-              );
-              throw fallbackError;
+              const combinedStream =
+                await navigator.mediaDevices.getUserMedia(mediaConstraints);
+              permissionStream.getTracks().forEach((track) => track.stop());
+              return combinedStream;
+            } catch (retryError) {
+              permissionStream.getTracks().forEach((track) => track.stop());
+              throw retryError;
             }
           }
         }
