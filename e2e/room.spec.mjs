@@ -102,6 +102,10 @@ async function installBrowserStubs(
         this.__e2eSrcObject = value;
       },
     });
+    Object.defineProperty(HTMLMediaElement.prototype, "play", {
+      configurable: true,
+      value: () => Promise.resolve(),
+    });
 
     const mediaDevices =
       mediaResult === "unsupported"
@@ -120,13 +124,15 @@ async function installBrowserStubs(
           };
 
     if (mediaDevices && screenShareResult !== "unsupported") {
-      mediaDevices.getDisplayMedia = async () => {
+      mediaDevices.getDisplayMedia = async (constraints) => {
         window.__e2eScreenCalls = (window.__e2eScreenCalls || 0) + 1;
+        window.__e2eScreenRequests = window.__e2eScreenRequests || [];
+        window.__e2eScreenRequests.push(constraints);
         if (screenShareResult !== "success") {
           const error = new DOMException("Screen capture denied", screenShareResult);
           throw error;
         }
-        return createStream("screen");
+        return createStream("screen", constraints);
       };
     }
 
@@ -211,6 +217,28 @@ test.describe("room joining", () => {
     ]);
   });
 
+  test("keeps the audio unlock control after it is activated", async ({ page }) => {
+    await installBrowserStubs(page);
+    await page.goto("/room-e2e-audio-unlock");
+
+    await page.evaluate(() => {
+      const wrapper = document.createElement("div");
+      const video = document.createElement("video");
+      const overlay = document.createElement("div");
+      const muteButton = document.createElement("button");
+      wrapper.className = "video-wrapper";
+      overlay.appendChild(muteButton);
+      wrapper.append(video, overlay);
+      document.querySelector(".video-call").appendChild(wrapper);
+      document.querySelector(".unmute-all").style.display = "block";
+    });
+
+    await page.getByRole("button", { name: "Click to join the call" }).click();
+
+    await expect(page.locator(".unmute-all")).toHaveCount(1);
+    await expect(page.locator(".unmute-all")).toBeHidden();
+  });
+
   test("can start and stop screen sharing after joining", async ({ page }) => {
     await installBrowserStubs(page);
     await page.goto("/room-e2e-screen-share");
@@ -225,6 +253,9 @@ test.describe("room joining", () => {
 
     await expect(page.getByRole("button", { name: "Stop sharing screen" })).toBeVisible();
     await expect.poll(() => page.evaluate(() => window.__e2eScreenCalls)).toBe(1);
+    await expect.poll(() => page.evaluate(() => window.__e2eScreenRequests)).toEqual([
+      { video: true, audio: true },
+    ]);
 
     await page.getByRole("button", { name: "Stop sharing screen" }).click();
     await expect(page.getByRole("button", { name: "Share screen" })).toBeVisible();

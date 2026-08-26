@@ -455,11 +455,21 @@
           const activeScreenStream = screenStream;
           screenStream = null;
           const screenTrack = activeScreenStream.getVideoTracks()[0];
+          const screenAudioTracks = activeScreenStream.getAudioTracks();
           const cameraTrack = selfStream && selfStream.getVideoTracks()[0];
 
           for (const peer of peers) {
             if (peer.replaceTrack && screenTrack && cameraTrack) {
               peer.replaceTrack(screenTrack, cameraTrack, selfStream);
+            }
+            for (const audioTrack of screenAudioTracks) {
+              if (peer.removeTrack) {
+                try {
+                  peer.removeTrack(audioTrack, activeScreenStream);
+                } catch (error) {
+                  console.error("Failed to remove shared audio:", error);
+                }
+              }
             }
           }
 
@@ -489,9 +499,10 @@
           try {
             const nextScreenStream = await navigator.mediaDevices.getDisplayMedia({
               video: true,
-              audio: false,
+              audio: true,
             });
             const nextScreenTrack = nextScreenStream.getVideoTracks()[0];
+            const nextScreenAudioTracks = nextScreenStream.getAudioTracks();
             const cameraTrack = selfStream && selfStream.getVideoTracks()[0];
 
             if (!nextScreenTrack || !cameraTrack) {
@@ -502,6 +513,15 @@
             for (const peer of peers) {
               if (peer.replaceTrack) {
                 peer.replaceTrack(cameraTrack, nextScreenTrack, selfStream);
+              }
+              for (const audioTrack of nextScreenAudioTracks) {
+                if (peer.addTrack) {
+                  try {
+                    peer.addTrack(audioTrack, nextScreenStream);
+                  } catch (error) {
+                    console.error("Failed to add shared audio:", error);
+                  }
+                }
               }
             }
 
@@ -610,6 +630,22 @@
         const videoWrapper = document.querySelector(".video-call");
         const unmuteAllBtn = document.querySelector(".unmute-all");
         let hasUnmutedAll = false;
+
+        function unmuteRemoteVideo(video) {
+          video.muted = false;
+          video.volume = 1;
+          video.removeAttribute("muted");
+          const playback = video.play();
+          if (playback && typeof playback.catch === "function") {
+            playback.catch(() => {
+              video.muted = true;
+              video.volume = 0;
+              video.setAttribute("muted", "muted");
+              unmuteAllBtn.style.display = "block";
+            });
+          }
+        }
+
         unmuteAllBtn.addEventListener("click", function () {
           const videos = Array.from(videoWrapper.children);
           if (videos.length) {
@@ -618,13 +654,11 @@
           const width = (100 / videos.length).toFixed(2) + "vw";
           videos.forEach((elm) => {
             elm.style.width = width;
-            elm.children[0].muted = false;
-            elm.children[0].volume = 1;
+            unmuteRemoteVideo(elm.children[0]);
             elm.children[1].children[0].textContent = "Mute";
             elm.children[1].children[0].removeAttribute("style");
-            elm.children[0].removeAttribute("muted");
           });
-          document.querySelector(".container").removeChild(unmuteAllBtn);
+          unmuteAllBtn.style.display = "none";
           videoWrapper.style.opacity = 1;
           hasUnmutedAll = true;
         });
@@ -709,6 +743,8 @@
             videoWrapper.appendChild(peerVideoTag);
             setInCallUI();
             if (hasUnmutedAll) {
+              unmuteRemoteVideo(video);
+              unmuteAllBtn.style.display = "none";
               const videos = Array.from(videoWrapper.children);
               const width = (100 / videos.length).toFixed(2) + "vw";
               videos.forEach((elm) => {
