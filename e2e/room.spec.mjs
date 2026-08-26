@@ -169,7 +169,7 @@ test.describe("room joining", () => {
     ).toBeVisible();
   });
 
-  test("shows a useful error and stays in the room when media access is denied", async ({ page }) => {
+  test("shows a useful error and stays in the room when media access is denied", async ({ page }, testInfo) => {
     await installBrowserStubs(page, "NotAllowedError");
     await page.goto("/room-e2e-denied");
 
@@ -178,7 +178,13 @@ test.describe("room joining", () => {
     });
     await joinButton.click();
 
-    await expect(page.getByRole("alert")).toHaveText(/Camera and microphone access was blocked/);
+    if (testInfo.project.name === "android-chromium") {
+      await expect(page.getByRole("alert")).toHaveText(
+        /Chrome couldn't start your camera and microphone[\s\S]*Android Settings > Apps > Chrome > Permissions[\s\S]*Camera and Microphone/i
+      );
+    } else {
+      await expect(page.getByRole("alert")).toHaveText(/Camera and microphone access was blocked/);
+    }
     await expect(page).toHaveURL(/\/room-e2e-denied$/);
     await expect(joinButton).toBeEnabled();
     await expect(page.getByText("Sorry we got an error")).toHaveCount(0);
@@ -243,6 +249,24 @@ test.describe("room joining", () => {
       { video: true, audio: true },
       { video: true, audio: true },
     ]);
+  });
+
+  test("shows Android Chrome permission instructions after retry fails", async ({ page }, testInfo) => {
+    testInfo.skip(testInfo.project.name !== "android-chromium", "Android-only permission guidance");
+    await installBrowserStubs(page, "success", "success", {
+      mediaResults: ["NotAllowedError", "NotAllowedError"],
+      permissionStates: { camera: "granted", microphone: "prompt" },
+    });
+    await page.goto("/room-e2e-android-permission-guidance");
+
+    await page
+      .getByRole("button", { name: /Join room \(allow camera and microphone\)/ })
+      .click();
+
+    await expect(page.getByRole("alert")).toHaveText(
+      /Chrome couldn't start your camera and microphone[\s\S]*Android Settings > Apps > Chrome > Permissions[\s\S]*Camera and Microphone/i
+    );
+    await expect(page.getByRole("alert")).not.toHaveText(/still needs microphone access/i);
   });
 
   test("keeps the audio unlock control after it is activated", async ({ page }) => {

@@ -60,6 +60,7 @@
         max-width: 520px;
         margin: 12px 8px;
         color: #ffb4ab;
+        white-space: pre-line;
       }
       .container {
         left: 0;
@@ -409,12 +410,9 @@
               const permissionStatus =
                 cameraState === "unknown" && microphoneState === "unknown"
                   ? ""
-                  : ` Permission status: camera ${cameraState}, microphone ${microphoneState}.`;
+                  : `\n\nPermission check (may be stale): camera ${cameraState}, microphone ${microphoneState}.`;
               if (/Android/i.test(navigator.userAgent)) {
-                if (cameraState === "granted" && microphoneState === "prompt") {
-                  return `Chrome still needs microphone access. Tap Allow when Chrome asks for the microphone, then try again.${permissionStatus}`;
-                }
-                return `Camera and microphone access was blocked. In Chrome, open the site controls icon beside the address, set Camera and Microphone to Allow, reload this room, then try again.${permissionStatus}`;
+                return `Chrome couldn't start your camera and microphone.\n\nIf Chrome only asked for the camera:\n1. Tap Allow, then tap Join again.\n2. Open the site controls icon beside the address and set Camera and Microphone to Allow.\n3. Open Android Settings > Apps > Chrome > Permissions and allow Camera and Microphone.\n4. Make sure Android's Camera access and Microphone access switches are on.\n5. Reload this room and tap Join again.${permissionStatus}`;
               }
               if (cameraState === "granted" && microphoneState === "prompt") {
                 return `Chrome still needs microphone access. Allow the microphone when prompted, then try again.${permissionStatus}`;
