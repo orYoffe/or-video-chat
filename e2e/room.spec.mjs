@@ -226,13 +226,13 @@ test.describe("room joining", () => {
     ]);
   });
 
-  test("recovers Android when one device permission is already granted", async ({ page }, testInfo) => {
-    testInfo.skip(testInfo.project.name !== "android-chromium", "Android-only permission fallback");
+  test("retries the combined request when Android permission state is stale", async ({ page }, testInfo) => {
+    testInfo.skip(testInfo.project.name !== "android-chromium", "Android-only permission retry");
     await installBrowserStubs(page, "success", "success", {
-      mediaResults: ["NotAllowedError", "success", "success"],
+      mediaResults: ["NotAllowedError", "success"],
       permissionStates: { camera: "granted", microphone: "prompt" },
     });
-    await page.goto("/room-e2e-android-permission-fallback");
+    await page.goto("/room-e2e-android-permission-retry");
 
     await page
       .getByRole("button", { name: /Join room \(allow camera and microphone\)/ })
@@ -241,7 +241,6 @@ test.describe("room joining", () => {
     await expect(page.locator(".join-call")).toBeHidden();
     await expect.poll(() => page.evaluate(() => window.__e2eMediaRequests)).toEqual([
       { video: true, audio: true },
-      { video: false, audio: true },
       { video: true, audio: true },
     ]);
   });
