@@ -124,6 +124,12 @@
         right: 0;
         top: 0;
         z-index: 30;
+        /* Mirror only the local camera preview, so it feels like a mirror. */
+        transform: scaleX(-1);
+      }
+      /* Never mirror a screen share, even in the local preview element. */
+      .video-self.screen-sharing {
+        transform: none;
       }
       .video-call {
         position: absolute;
@@ -176,15 +182,6 @@
       .chat-link {
         margin-right: 20px;
       }
-      video {
-        -moz-transform: scaleX(-1);
-        -o-transform: scaleX(-1);
-        -webkit-transform: scaleX(-1);
-        transform: scaleX(-1);
-        filter: FlipH;
-        -ms-filter: "FlipH";
-      }
-
       @media only screen and (max-width: 800px) {
         .mute-overlay button {
           opacity: 1;
@@ -473,6 +470,9 @@
 
           screenTrack?.stop();
           play(".video-self", selfStream);
+          document
+            .querySelector(".video-self")
+            .classList.remove("screen-sharing");
           shareScreen.textContent = "Share screen";
           shareScreen.disabled = false;
         }
@@ -525,6 +525,7 @@
 
             screenStream = nextScreenStream;
             play(".video-self", screenStream);
+            document.querySelector(".video-self").classList.add("screen-sharing");
             shareScreen.textContent = "Stop sharing screen";
             nextScreenTrack.addEventListener("ended", stopScreenSharing, {
               once: true,
