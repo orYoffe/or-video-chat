@@ -299,6 +299,13 @@ test.describe("room joining", () => {
       .getByRole("button", { name: /Join room \(allow camera and microphone\)/ })
       .click();
 
+    const selfVideo = page.locator(".video-self");
+    const selfTransform = () =>
+      selfVideo.evaluate((el) => getComputedStyle(el).transform);
+
+    // The local camera preview is mirrored so it feels like a mirror.
+    await expect.poll(selfTransform).toBe("matrix(-1, 0, 0, 1, 0, 0)");
+
     const shareButton = page.getByRole("button", { name: "Share screen" });
     await expect(shareButton).toBeVisible();
     await shareButton.click();
@@ -309,8 +316,37 @@ test.describe("room joining", () => {
       { video: true, audio: true },
     ]);
 
+    // While sharing a screen the same element must NOT be mirrored.
+    await expect(selfVideo).toHaveClass(/\bscreen-sharing\b/);
+    await expect.poll(selfTransform).toBe("none");
+
     await page.getByRole("button", { name: "Stop sharing screen" }).click();
     await expect(page.getByRole("button", { name: "Share screen" })).toBeVisible();
+
+    // Back to the camera preview: mirror is restored.
+    await expect(selfVideo).not.toHaveClass(/\bscreen-sharing\b/);
+    await expect.poll(selfTransform).toBe("matrix(-1, 0, 0, 1, 0, 0)");
+  });
+
+  test("does not mirror remote participant video", async ({ page }) => {
+    await installBrowserStubs(page);
+    await page.goto("/room-e2e-remote-mirror");
+
+    await page
+      .getByRole("button", { name: /Join room \(allow camera and microphone\)/ })
+      .click();
+
+    await page.evaluate(() => {
+      const wrapper = document.createElement("div");
+      wrapper.className = "video-wrapper";
+      wrapper.appendChild(document.createElement("video"));
+      document.querySelector(".video-call").appendChild(wrapper);
+    });
+
+    const remoteTransform = await page
+      .locator(".video-call .video-wrapper video")
+      .evaluate((el) => getComputedStyle(el).transform);
+    expect(remoteTransform === "none" || remoteTransform === "").toBe(true);
   });
 
   test("disables screen sharing when the browser does not support it", async ({ page }) => {
