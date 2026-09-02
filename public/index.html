@@ -127,9 +127,15 @@
         /* Mirror only the local camera preview, so it feels like a mirror. */
         transform: scaleX(-1);
       }
-      /* Never mirror a screen share, even in the local preview element. */
+      /* While sharing a screen the local preview must not be mirrored, and it
+         must stay a small corner thumbnail. If it filled the viewport (the
+         inline width:100% it carries until a remote peer connects), a
+         full-screen or full-window capture would show the element that is
+         displaying the capture, recursing into an infinite mirror. */
       .video-self.screen-sharing {
         transform: none;
+        width: 130px !important;
+        height: auto;
       }
       .video-call {
         position: absolute;

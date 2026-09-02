@@ -300,11 +300,14 @@ test.describe("room joining", () => {
       .click();
 
     const selfVideo = page.locator(".video-self");
-    const selfTransform = () =>
-      selfVideo.evaluate((el) => getComputedStyle(el).transform);
+    const selfStyle = (prop) =>
+      selfVideo.evaluate((el, p) => getComputedStyle(el)[p], prop);
+    const selfTransform = () => selfStyle("transform");
 
-    // The local camera preview is mirrored so it feels like a mirror.
+    // The local camera preview is mirrored so it feels like a mirror, and
+    // fills the viewport while there is no remote peer (inline width:100%).
     await expect.poll(selfTransform).toBe("matrix(-1, 0, 0, 1, 0, 0)");
+    await expect.poll(() => selfStyle("width")).not.toBe("130px");
 
     const shareButton = page.getByRole("button", { name: "Share screen" });
     await expect(shareButton).toBeVisible();
@@ -316,16 +319,20 @@ test.describe("room joining", () => {
       { video: true, audio: true },
     ]);
 
-    // While sharing a screen the same element must NOT be mirrored.
+    // While sharing a screen the same element must NOT be mirrored, and it
+    // must shrink to the corner thumbnail so a full-screen capture cannot
+    // recurse into the element that is displaying it.
     await expect(selfVideo).toHaveClass(/\bscreen-sharing\b/);
     await expect.poll(selfTransform).toBe("none");
+    await expect.poll(() => selfStyle("width")).toBe("130px");
 
     await page.getByRole("button", { name: "Stop sharing screen" }).click();
     await expect(page.getByRole("button", { name: "Share screen" })).toBeVisible();
 
-    // Back to the camera preview: mirror is restored.
+    // Back to the camera preview: mirror is restored and it fills the viewport.
     await expect(selfVideo).not.toHaveClass(/\bscreen-sharing\b/);
     await expect.poll(selfTransform).toBe("matrix(-1, 0, 0, 1, 0, 0)");
+    await expect.poll(() => selfStyle("width")).not.toBe("130px");
   });
 
   test("does not mirror remote participant video", async ({ page }) => {
