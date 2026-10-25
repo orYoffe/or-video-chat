@@ -696,8 +696,34 @@
           peers.add(peer);
 
           let peerVideoTag;
+          let peerVideoEl;
 
           peer.on("stream", function (remoteStream) {
+            // Starting/stopping screen share adds or removes a track on a
+            // *new* MediaStream object (the screen-share audio), which
+            // fires this "stream" event again for a peer we already have a
+            // tile for. Merge those extra tracks into the existing tile
+            // instead of creating another one, or every participant grows
+            // an extra duplicate video square each time anyone toggles
+            // screen sharing.
+            if (peerVideoTag && peerVideoEl) {
+              remoteStream.getTracks().forEach((track) => {
+                const existingTracks = peerVideoEl.srcObject
+                  ? peerVideoEl.srcObject.getTracks()
+                  : [];
+                const alreadyAttached = existingTracks.some(
+                  (existingTrack) => existingTrack.id === track.id
+                );
+                if (!alreadyAttached && peerVideoEl.srcObject?.addTrack) {
+                  peerVideoEl.srcObject.addTrack(track);
+                }
+              });
+              if (remoteStream.getVideoTracks().length) {
+                play(peerVideoEl, remoteStream);
+              }
+              return;
+            }
+
             peerVideoTag = document.createElement("div");
             const muteOverlay = document.createElement("div");
             const muteBtn = document.createElement("button");
@@ -743,6 +769,7 @@
               }
             });
             play(video, remoteStream);
+            peerVideoEl = video;
             peerVideoTag.appendChild(video);
             muteOverlay.appendChild(muteBtn);
             peerVideoTag.appendChild(muteOverlay);
